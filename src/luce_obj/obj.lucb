@@ -1,0 +1,127 @@
+import files
+import interop
+import memory
+import strings
+from three import PolygonMesh, MeshBuilder, Vector3, invalid
+from luce_obj.scan import scan, Tokens
+
+pub struct Obj:
+    let reserved: u8 = 0
+
+    ## Read at most 1 GiB of polygon text; preflight bounds native allocations.
+    pub static func load(path: str) -> interop.Reference[PolygonMesh]!:
+        let text = try files.read_text(path, 1073741824)
+        defer text.release()
+        return try Obj.decode(text.value)
+
+    ## Decode shared positions, polygon indices, corner UVs and corner normals.
+    pub static func decode(text: str) -> interop.Reference[PolygonMesh]!:
+        if text.length > 1073741824:
+            error(invalid, "OBJ exceeds 1 GiB input limit")
+        let counts = try scan(text)
+        var mesh = try MeshBuilder()
+        defer mesh.close()
+        let uv = try alloc Vector3[counts.uv] in memory.heap
+        defer free(uv) in memory.heap
+        let normals = try alloc Vector3[counts.normals] in memory.heap
+        defer free(normals) in memory.heap
+        let corner_uv = try alloc f64[counts.corners * 2 if counts.uv > 0 else 0] in memory.heap
+        defer free(corner_uv) in memory.heap
+        let corner_normal = try alloc f64[counts.corners * 3 if counts.normals > 0 else 0] in memory.heap
+        defer free(corner_normal) in memory.heap
+        var nu: usize = 0
+        var nn: usize = 0
+        var has_uv = false
+        var has_normal = false
+        var position: usize = 0
+        while position < text.length:
+            let start = position
+            while position < text.length and text.bytes[position] != 10:
+                position += 1
+            var line = Tokens((str)text.bytes[start..<position], 0)
+            if position < text.length:
+                position += 1
+            let kind = line.next()
+            if kind == "" or kind.bytes[0] == 35:
+                continue
+            if kind == "v":
+                let x = try number(line.next())
+                let y = try number(line.next())
+                let z = try number(line.next())
+                let extra = line.next()
+                var w: f64 = 1.0
+                if extra != "" and extra.bytes[0] != 35:
+                    w = try number(extra)
+                    if w == 0.0:
+                        error(invalid, "OBJ homogeneous weight cannot be zero")
+                    let tail = line.next()
+                    if tail != "" and tail.bytes[0] != 35:
+                        error(invalid, "OBJ vertex colors are not supported; expected v x y z [w]")
+                discard(try mesh.point(Vector3(x / w, y / w, z / w)))
+            elif kind == "vt" or kind == "vn":
+                let x = try number(line.next())
+                let yt = line.next()
+                let y = try number(yt) if yt != "" and yt.bytes[0] != 35 else 0.0
+                let zt = line.next()
+                let z = try number(zt) if zt != "" and zt.bytes[0] != 35 else 0.0
+                if kind == "vt":
+                    if nu == uv.length:
+                        error(invalid, "OBJ has too many UVs")
+                    uv[nu] = Vector3(x, y, z)
+                    nu += 1
+                else:
+                    if nn == normals.length or yt == "" or zt == "":
+                        error(invalid, "OBJ has invalid normal data")
+                    normals[nn] = Vector3(x, y, z)
+                    nn += 1
+            elif kind == "f":
+                let first = mesh.nc
+                while true:
+                    let token = line.next()
+                    if token == "" or token.bytes[0] == 35:
+                        break
+                    var slash: usize = 0
+                    while slash < token.length and token.bytes[slash] != 47:
+                        slash += 1
+                    let point = try reference((str)token.bytes[..<slash], mesh.np)
+                    var tex = Vector3()
+                    var normal = Vector3()
+                    if slash < token.length:
+                        let uv_start = slash + 1
+                        slash += 1
+                        while slash < token.length and token.bytes[slash] != 47:
+                            slash += 1
+                        if slash > uv_start:
+                            tex = uv[(usize)(try reference((str)token.bytes[uv_start..<slash], nu))]
+                            has_uv = true
+                        if slash < token.length:
+                            normal = normals[(usize)(try reference((str)token.bytes[slash + 1..], nn))]
+                            has_normal = true
+                    let corner = mesh.nc
+                    try mesh.corner(point)
+                    if counts.uv > 0:
+                        corner_uv[corner * 2] = tex.x
+                        corner_uv[corner * 2 + 1] = tex.y
+                    if counts.normals > 0:
+                        corner_normal[corner * 3] = normal.x
+                        corner_normal[corner * 3 + 1] = normal.y
+                        corner_normal[corner * 3 + 2] = normal.z
+                let end = mesh.nc
+                mesh.nc = first
+                try mesh.face((i64)(end - first))
+                mesh.nc = end
+            elif kind != "o" and kind != "g" and kind != "s" and kind != "mtllib" and kind != "usemtl":
+                error(invalid, "unsupported OBJ record (polygon meshes only)")
+        if mesh.np == 0:
+            error(invalid, "OBJ contains no points")
+        return try PolygonMesh.from_corner_data(mesh.points[..<mesh.np], mesh.sizes[..<mesh.nf], mesh.corners[..<mesh.nc], corner_uv[..<(mesh.nc * 2 if has_uv else 0)], corner_normal[..<(mesh.nc * 3 if has_normal else 0)])
+
+func number(text: str) -> f64!:
+    return try strings.parse_f64(text)
+
+func reference(text: str, count: usize) -> i64!:
+    let index = strings.parse_i64(text) else error(invalid, "invalid OBJ index")
+    let resolved = (i64)count + index if index < 0 else index - 1
+    if index == 0 or resolved < 0 or resolved >= (i64)count:
+        error(invalid, "OBJ index is out of range")
+    return resolved

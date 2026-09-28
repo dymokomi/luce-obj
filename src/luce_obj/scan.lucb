@@ -1,0 +1,43 @@
+## Allocation preflight for untrusted OBJ text. No per-record heap allocations.
+from three import invalid
+
+pub struct Counts:
+    pub var points: usize = 0
+    pub var faces: usize = 0
+    pub var corners: usize = 0
+    pub var uv: usize = 0
+    pub var normals: usize = 0
+
+pub func scan(text: str) -> Counts!:
+    var result = Counts()
+    var at: usize = 0
+    while at < text.length:
+        let start = at
+        while at < text.length and text.bytes[at] != 10: at += 1
+        var tokens = Tokens((str)text.bytes[start..<at], 0)
+        if at < text.length: at += 1
+        let kind = tokens.next()
+        if kind == "v": result.points += 1
+        elif kind == "vt": result.uv += 1
+        elif kind == "vn": result.normals += 1
+        elif kind == "f":
+            var count: usize = 0
+            while true:
+                let token = tokens.next()
+                if token == "" or token.bytes[0] == 35: break
+                count += 1
+            if count < 3 or count > 256: error(invalid, "OBJ face needs 3..256 corners")
+            result.faces += 1
+            result.corners += count
+        if result.points > 8388608 or result.faces > 8388608 or result.corners > 33554432 or result.uv > 33554432 or result.normals > 33554432:
+            error(invalid, "OBJ exceeds the current 8M point/face or 32M corner/attribute budget")
+    return result
+
+pub struct Tokens:
+    pub let text: str
+    pub var at: usize
+    pub mutating func next() -> str:
+        while self.at < self.text.length and (self.text.bytes[self.at] == 32 or self.text.bytes[self.at] == 9 or self.text.bytes[self.at] == 13): self.at += 1
+        let start = self.at
+        while self.at < self.text.length and self.text.bytes[self.at] != 32 and self.text.bytes[self.at] != 9 and self.text.bytes[self.at] != 13: self.at += 1
+        return (str)self.text.bytes[start..<self.at]
