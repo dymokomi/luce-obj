@@ -1,0 +1,93 @@
+## The fast reader against the original decoder it replaced (Obj.decode_reference):
+## identical meshes and attributes on generated fixtures, identical errors on
+## malformed text.
+from obj import Obj
+from geocore import PolygonMesh
+import files
+
+## Bit-for-bit equal positions, polygons and corner attributes.
+func identical(a: PolygonMesh, b: PolygonMesh) -> unit!:
+    assert(a.point_count() == b.point_count() and a.face_count() == b.face_count() and a.vertex_count() == b.vertex_count())
+    for index in 0..<a.point_count():
+        let p = a.point(index)
+        let q = b.point(index)
+        if p.x != q.x or p.y != q.y or p.z != q.z:
+            print(f"point {index} differs: {p.x} {p.y} {p.z} against {q.x} {q.y} {q.z}")
+        assert(p.x == q.x and p.y == q.y and p.z == q.z)
+    for face in 0..<a.face_count():
+        assert(a.face_size(face) == b.face_size(face))
+        for corner in 0..<a.face_size(face):
+            assert(a.face_point(face, corner) == b.face_point(face, corner))
+    assert(a.attribute_count() == b.attribute_count())
+    for name in ["uv", "N"]:
+        let left = a.find_attribute(name, 1)
+        let right = b.find_attribute(name, 1)
+        assert((left >= 0) == (right >= 0))
+        if left >= 0:
+            assert(a.attribute_width(left) == b.attribute_width(right))
+            for corner in 0..<a.vertex_count():
+                for component in 0..<a.attribute_width(left):
+                    assert(a.attribute_value(left, corner, component) == b.attribute_value(right, corner, component))
+
+## Load and decode `path` both ways; return the reference mesh.
+func matches(path: str) -> PolygonMesh!:
+    let text = files.read_text(path, 67108864)
+    let reference = Obj.decode_reference(text)
+    identical(Obj.decode(text), reference)
+    identical(Obj.load(path), reference)
+    return reference
+
+## Both decoders reject `text`, with the same message.
+func fails_alike(text: str) -> unit!:
+    var fast = ""
+    discard(Obj.decode(text)) catch failure:
+        fast = failure.message
+    var slow = ""
+    discard(Obj.decode_reference(text)) catch failure:
+        slow = failure.message
+    if fast == "" or fast != slow:
+        print(f"errors differ: fast '{fast}', reference '{slow}'")
+    assert(fast != "" and fast == slow)
+
+pub func reader_tests() -> unit!:
+    let numbers = matches("tests/fixtures/numbers.obj")
+    assert(numbers.point_count() == 3003 and numbers.face_count() == 4000)
+    let polygons = matches("tests/fixtures/polygons.obj")
+    assert(polygons.face_size(polygons.face_count() - 1) == 256)
+    let mixed = matches("tests/fixtures/mixed.obj")
+    assert(mixed.find_attribute("uv", 1) >= 0 and mixed.find_attribute("N", 1) >= 0)
+    # CRLF line ends and tab/blank runs decode to the very same mesh.
+    identical(matches("tests/fixtures/mixed_crlf.obj"), mixed)
+    let chunked = matches("tests/fixtures/chunked.obj")
+    assert(chunked.face_count() > 20000)
+    discard(matches("tests/fixtures/large.obj"))
+    discard(matches("tests/fixtures/accents.obj"))
+    # Small cases: weights, explicit plus signs, UVs on some faces only, points only.
+    for text in ["v 0 0 0 2\nv 2 0 0 2\nv 0 2 0 4\nf 1 2 3\n",
+                 "v 0 0 0\nv 1 0 0\nv 0 1 0\nf +1 +2 +3\n",
+                 "v 0 0 0\nv 1 0 0\nv 0 1 0\nv 1 1 0\nvt 0.5 0.25\nf 1/1 2/1 3/1\nf 2 4 3\n",
+                 "v 0 0 0\nv 1 0 0\nv 0 1 0\nvt 1 1\nvn 0 0 1\nf 1 2 3\n",
+                 "v 0 0 0\r\nv 1 0 0\r\nv 0 1 0\r\n\r\nf 1 2 3\r\n",
+                 "v 1 2 3\n",
+                 "  v\t0 0 0 # a point\n v 1 0 0\nv 0 1 0\nf 1 2 3 # the face\n#end"]:
+        identical(Obj.decode(text), Obj.decode_reference(text))
+    for text in ["", "# nothing\n", "v 0 0 0\nf 0 1 2\n", "v 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 4\n",
+                 "v 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2\n", "v 0 0\n", "v 0 0 0 0\n", "v 0 0 0 1 1\n",
+                 "v 1 2 3x\n", "v 1e999 0 0\n", "vn 0 1\n", "l 1 2\n", "v 0 0 0\nv 1 0 0\nv 0 1 0\nf 1/1 2/1 3/1\n",
+                 "v 0 0 0\nv 1 0 0\nv 0 1 0\nf 1// 2// 3//\n", "v 0 0 0\nv 1 0 0\nv 2 0 0\nf 1 2 3\n",
+                 "v 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 99999999999999999999\n", "v nan 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n",
+                 "v x 0 0\nf 1 2\n", "v 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3 -4\n"]:
+        fails_alike(text)
+    var face = "v 0 0 0\nf"
+    for _ in 0..<257:
+        face = face + " 1"
+    fails_alike(face + "\n")
+    # An error late in a many-chunk file, after valid chunks.
+    fails_alike(files.read_text("tests/fixtures/chunked.obj", 67108864) + "f 1 2 999999\n")
+    # Loading validates UTF-8 as reading text does.
+    for name in ["bad_utf8", "chunked_bad_utf8"]:
+        var message = ""
+        discard(Obj.load(f"tests/fixtures/{name}.obj")) catch failure:
+            message = failure.message
+        assert(message == "the file is not valid UTF-8")
+    print("PASS OBJ reader matches the reference decoder: meshes, attributes, CRLF, n-gons, chunks and errors")

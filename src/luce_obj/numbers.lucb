@@ -1,0 +1,139 @@
+## Fast, exact parsing of the numbers OBJ records hold, straight from the file
+## bytes and in the same pass that finds where they end. Common text takes a
+## short path whose result is bit-identical to strings.parse_f64 and to the
+## reference decoder's index resolution. Anything else (inf, nan, more than
+## 19 significant digits, far exponents, stray bytes, bad or out-of-range
+## references) goes to those parsers with the whole token, so values and
+## errors match the reference decoder exactly.
+import strings
+import luce_obj.reference as reference
+import luce_obj.lemire as lemire
+from luce_obj.lexing import skip_separators, token_end, delimiter
+
+## Every power of ten that f64 holds exactly.
+let powers: f64[23] = [1.0, 10.0, 100.0, 1000.0, 10000.0, 100000.0, 1000000.0, 10000000.0,
+    100000000.0, 1000000000.0, 10000000000.0, 100000000000.0, 1000000000000.0, 10000000000000.0,
+    100000000000000.0, 1000000000000000.0, 10000000000000000.0, 100000000000000000.0,
+    1000000000000000000.0, 10000000000000000000.0, 100000000000000000000.0,
+    1000000000000000000000.0, 10000000000000000000000.0]
+
+## Mantissas up to 2^53 are exact in f64.
+let exact_mantissa: u64 = 9007199254740992
+
+## The plain decimal ([+-] digits [. digits] [e [+-] digits]) starting at
+## bytes[start], with `stop` set just past it; none when there is none or its
+## value needs the general parser. With at most 19 significant digits, a
+## mantissa within 2^53 and a decimal exponent within ±22, one correctly
+## rounded multiply or divide of two exact values is the correctly rounded
+## result (Clinger's fast path), the value strtod returns. Other mantissas go
+## through Eisel-Lemire (lemire.lucb), which declines what it cannot decide.
+func decimal(bytes: const u8*, start: usize, end: usize, stop: usize*) -> f64?:
+    var at = start
+    let negative = at < end and bytes[at] == '-'
+    if at < end and (bytes[at] == '-' or bytes[at] == '+'):
+        at = at +% 1
+    var mantissa: u64 = 0
+    var digits: usize = 0
+    var scale: i64 = 0
+    var seen = false
+    while at < end and bytes[at] >= '0' and bytes[at] <= '9':
+        let digit = (u64)(bytes[at] -% '0')
+        seen = true
+        if mantissa != 0 or digit != 0:
+            if digits == 19:
+                return none
+            mantissa = mantissa *% 10 +% digit
+            digits = digits +% 1
+        at = at +% 1
+    if at < end and bytes[at] == '.':
+        at = at +% 1
+        while at < end and bytes[at] >= '0' and bytes[at] <= '9':
+            let digit = (u64)(bytes[at] -% '0')
+            seen = true
+            scale = scale -% 1
+            if mantissa != 0 or digit != 0:
+                if digits == 19:
+                    return none
+                mantissa = mantissa *% 10 +% digit
+                digits = digits +% 1
+            at = at +% 1
+    if not seen:
+        return none
+    if at < end and (bytes[at] == 'e' or bytes[at] == 'E'):
+        at = at +% 1
+        let down = at < end and bytes[at] == '-'
+        if at < end and (bytes[at] == '-' or bytes[at] == '+'):
+            at = at +% 1
+        var exponent: i64 = 0
+        var count: usize = 0
+        while at < end and bytes[at] >= '0' and bytes[at] <= '9':
+            if count == 6:
+                return none
+            exponent = exponent *% 10 +% (i64)(bytes[at] -% '0')
+            count = count +% 1
+            at = at +% 1
+        if count == 0:
+            return none
+        scale += -exponent if down else exponent
+    *stop = at
+    var value: f64 = 0.0
+    if mantissa != 0:
+        if mantissa > exact_mantissa or scale < -22 or scale > 22:
+            return lemire.convert(mantissa, scale, negative)
+        value = (f64)mantissa
+        value = value * powers[(usize)scale] if scale >= 0 else value / powers[(usize)(-scale)]
+    return -value if negative else value
+
+## The number spelled by the token data[start..<end].
+pub func number(data: const u8[], start: usize, end: usize) -> f64!:
+    var stop = start
+    let value = decimal(data.data, start, end, &stop) else return try slow_number(data, start, end)
+    if stop != end:
+        return try slow_number(data, start, end)
+    return value
+
+## The number spelled by the next token of the line after *at, which moves to
+## the token's end. An empty or commented field fails as strings.parse_f64 does.
+pub func field(data: const u8[], at: usize*, end: usize) -> f64!:
+    let bytes = data.data
+    let start = skip_separators(bytes, *at, end)
+    var stop = start
+    if let value = decimal(bytes, start, end, &stop):
+        if stop == end or delimiter(bytes[stop]):
+            *at = stop
+            return value
+    let token = token_end(bytes, start, end)
+    *at = token
+    return try slow_number(data, start, token)
+
+## The general parser, for text the fast path does not take.
+cold func slow_number(data: const u8[], start: usize, end: usize) -> f64!:
+    return try strings.parse_f64((str)data[start..<end])
+
+## The 0-based element named by the reference field starting at *at, a
+## 1-based or negative (relative) index among the `count` declared so far;
+## *at moves to the field's end: the next slash when `slash`, else the end of
+## the token. Plain decimal text is resolved here; anything else, and every
+## failure, goes through the reference decoder's resolver with the field.
+pub func reference_at(data: const u8[], at: usize*, end: usize, count: usize, slash: bool) -> i64!:
+    let bytes = data.data
+    let start = *at
+    var cursor = start
+    let negative = cursor < end and bytes[cursor] == '-'
+    if negative:
+        cursor = cursor +% 1
+    let first = cursor
+    var value: i64 = 0
+    while cursor < end and bytes[cursor] >= '0' and bytes[cursor] <= '9' and cursor -% first < 18:
+        value = value *% 10 +% (i64)(bytes[cursor] -% '0')
+        cursor = cursor +% 1
+    if cursor > first and (cursor == end or delimiter(bytes[cursor]) or (slash and bytes[cursor] == '/')):
+        let resolved = (i64)count - value if negative else value - 1
+        if value != 0 and resolved >= 0 and resolved < (i64)count:
+            *at = cursor
+            return resolved
+    var stop = start
+    while stop < end and not delimiter(bytes[stop]) and not (slash and bytes[stop] == '/'):
+        stop = stop +% 1
+    *at = stop
+    return try reference.reference((str)data[start..<stop], count)

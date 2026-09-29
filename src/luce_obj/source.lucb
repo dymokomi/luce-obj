@@ -1,0 +1,53 @@
+## Whole-file reads for the reader: one allocation sized from the file's
+## metadata and filled by large reads, where files.read_text copies through a
+## 4 KiB buffer, doubles as it goes and copies the result once more. Failures
+## carry read_text's codes and messages; UTF-8 is validated by the reader.
+import c
+import memory
+import strings
+import utf8
+import files
+
+## The bytes of the file at `path`, at most `limit` of them, on memory.heap.
+pub func read(path: str, limit: usize) -> u8[]!:
+    if path.length == 0 or not utf8.valid(path.bytes):
+        error(files.invalid_options, "a path must be nonempty UTF-8")
+    for byte in path.bytes:
+        if byte == 0:
+            error(files.invalid_options, "a path cannot contain NUL")
+    let native = try strings.copy(path)
+    defer strings.release(native)
+    var file = try files.File.open((c.str)native)
+    defer file.destroy()
+    let info = try file.metadata()
+    # One byte more than the size tells an exact fit from a file that grew.
+    var capacity = (usize)info.size + 1 if info.size >= 0 else 4096
+    if capacity > limit + 1:
+        capacity = limit + 1
+    var data = try alloc u8[capacity] in memory.heap
+    errdefer free(data) in memory.heap
+    var used: usize = 0
+    while true:
+        if used == data.length:
+            if used > limit:
+                error(files.too_large, "the file exceeds the read limit")
+            var larger = data.length * 2
+            if larger > limit + 1:
+                larger = limit + 1
+            let grown = try alloc u8[larger] in memory.heap
+            memory.copy(grown, data, used)
+            free(data) in memory.heap
+            data = grown
+        let count = try file.read(data[used..])
+        if count == 0:
+            break
+        used += count
+    if used > limit:
+        error(files.too_large, "the file exceeds the read limit")
+    try file.close()
+    if used == 0:
+        # A zero-length span frees nothing, so return the block now.
+        free(data) in memory.heap
+        var empty: u8[]
+        return empty
+    return data[..<used]

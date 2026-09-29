@@ -1,0 +1,403 @@
+## The fast OBJ reader: the file bytes are scanned in place, in chunks split
+## at line boundaries and parsed in parallel.
+##
+## 1. Count: each chunk counts its `v`, `vt`, `vn` and `f` records and face
+##    corners, checks face sizes and notes any non-ASCII byte.
+## 2. Prefix sums give every chunk its first point, UV, normal, face and
+##    corner, so all arrays are allocated once at their final size.
+## 3. Parse: each chunk writes its records straight into those arrays,
+##    resolving references against the elements declared before each line,
+##    as a sequential reader would.
+## 4. Gather: corner UVs and normals are copied out of the `vt`/`vn` tables
+##    by the per-corner indices.
+##
+## The result is exactly the reference decoder's (reference.lucb). A chunk
+## that meets anything wrong stops, and the whole text then goes to the
+## reference decoder, which reports the error it always has; the fast path
+## never has to reproduce error order or wording itself.
+import interop
+import memory
+import utf8
+import files
+from geocore import PolygonMesh, Vector3, invalid
+import luce_obj.numbers as numbers
+from luce_obj.lexing import skip_separators, token_end, line_end, delimiter
+import geocore_parallel as pool
+import luce_obj.reference as reference
+from luce_obj.scan import scan
+
+## Budgets shared with scan.lucb.
+let most_elements: usize = 8388608
+let most_corners: usize = 33554432
+## Chunks are at least this many bytes; smaller files are one chunk.
+let chunk_bytes: usize = 262144
+let most_chunks: usize = 256
+
+struct Chunk:
+    var start: usize = 0
+    var end: usize = 0
+    ## Counted records, then (after the prefix sums) the first of each.
+    var points: usize = 0
+    var uvs: usize = 0
+    var normals: usize = 0
+    var faces: usize = 0
+    var corners: usize = 0
+    var first_point: usize = 0
+    var first_uv: usize = 0
+    var first_normal: usize = 0
+    var first_face: usize = 0
+    var first_corner: usize = 0
+    ## 0x80 when the chunk holds a byte of 0x80 or above (noted only when
+    ## validating), else 0.
+    var high: u8 = 0
+    ## Some face referenced a UV or a normal.
+    var used_uv: bool = false
+    var used_normal: bool = false
+    ## Counting or parsing met something the reference decoder must judge.
+    var failed: bool = false
+
+## Everything the chunk items share. Arrays are allocated after counting.
+struct Reader:
+    var data: const u8[]
+    ## Whether to note non-ASCII bytes for UTF-8 validation.
+    var validate: bool = false
+    var chunks: Chunk[]
+    var points: Vector3[]
+    var sizes: i64[]
+    var corners: i64[]
+    var uv_table: f64[]
+    var normal_table: f64[]
+    ## Per-corner 0-based vt/vn record, or -1; present when the file has any.
+    var corner_uv_index: i32[]
+    var corner_normal_index: i32[]
+    var corner_uv: f64[]
+    var corner_normal: f64[]
+
+    mutating func close():
+        release[Chunk](self.chunks)
+        release[Vector3](self.points)
+        release[i64](self.sizes)
+        release[i64](self.corners)
+        release[f64](self.uv_table)
+        release[f64](self.normal_table)
+        release[i32](self.corner_uv_index)
+        release[i32](self.corner_normal_index)
+        release[f64](self.corner_uv)
+        release[f64](self.corner_normal)
+
+## `count` elements on the heap; none allocated for zero.
+func take[T](count: usize) -> T[]!:
+    var empty: T[]
+    if count == 0:
+        return empty
+    return try alloc T[count] in memory.heap
+
+func release[T](values: T[]):
+    if values.length > 0:
+        free(values) in memory.heap
+
+## Decode OBJ bytes. `validate` checks UTF-8 as reading a text file does;
+## decoding a `str` needs no check.
+pub func decode(data: const u8[], validate: bool) -> interop.Reference[PolygonMesh]!:
+    if data.length > 1073741824:
+        error(invalid, "OBJ exceeds 1 GiB input limit")
+    var reader = Reader()
+    defer reader.close()
+    reader.data = data
+    reader.validate = validate
+    reader.chunks = try split(data)
+    pool.run(reader.chunks.length, count_chunk, (void*)&reader)
+    var high: u8 = 0
+    var failed = false
+    var total = Chunk()
+    for at in 0..<reader.chunks.length:
+        let chunk = &reader.chunks[at]
+        high |= chunk.high
+        failed = failed or chunk.failed
+        chunk.first_point = total.points
+        chunk.first_uv = total.uvs
+        chunk.first_normal = total.normals
+        chunk.first_face = total.faces
+        chunk.first_corner = total.corners
+        total.points += chunk.points
+        total.uvs += chunk.uvs
+        total.normals += chunk.normals
+        total.faces += chunk.faces
+        total.corners += chunk.corners
+    if high >= 128 and not utf8.valid(data):
+        error(files.invalid_options, "the file is not valid UTF-8")
+    if failed or total.points > most_elements or total.faces > most_elements or total.corners > most_corners or total.uvs > most_corners or total.normals > most_corners:
+        # The reference scan reports the face-size or budget error at its line.
+        discard(try scan((str)data))
+        return try reference.decode_reference((str)data)
+    try allocate(&reader, total)
+    pool.run(reader.chunks.length, parse_chunk, (void*)&reader)
+    var used_uv = false
+    var used_normal = false
+    for chunk in reader.chunks:
+        if chunk.failed:
+            return try reference.decode_reference((str)data)
+        used_uv = used_uv or chunk.used_uv
+        used_normal = used_normal or chunk.used_normal
+    if total.points == 0:
+        error(invalid, "OBJ contains no points")
+    if used_uv or used_normal:
+        pool.run(reader.chunks.length, gather_chunk, (void*)&reader)
+    let nc = total.corners
+    return try PolygonMesh.from_corner_data(reader.points, reader.sizes, reader.corners, reader.corner_uv[..<(nc * 2 if used_uv else 0)], reader.corner_normal[..<(nc * 3 if used_normal else 0)])
+
+## Chunks of at least `chunk_bytes`, a few per thread, each ending just after
+## a line feed (the last at the end of the text).
+func split(data: const u8[]) -> Chunk[]!:
+    let wanted = pool.width() * 4 if data.length >= chunk_bytes * 2 else 1
+    var count = data.length // chunk_bytes
+    if count > wanted:
+        count = wanted
+    if count > most_chunks:
+        count = most_chunks
+    if count == 0:
+        count = 1
+    var ends: usize[256]
+    var used: usize = 0
+    var start: usize = 0
+    for at in 0..<count:
+        var end = data.length if at == count - 1 else (data.length // count) * (at + 1)
+        if end <= start:
+            continue
+        while end < data.length and data[end - 1] != 10:
+            end += 1
+        ends[used] = end
+        used += 1
+        start = end
+        if end == data.length:
+            break
+    if used == 0:
+        ends[0] = data.length
+        used = 1
+    let chunks = try alloc Chunk[used] in memory.heap
+    start = 0
+    for at in 0..<used:
+        chunks[at] = Chunk(start = start, end = ends[at])
+        start = ends[at]
+    return chunks
+
+func allocate(reader: Reader*, total: Chunk) -> !:
+    reader.points = try take[Vector3](total.points)
+    reader.sizes = try take[i64](total.faces)
+    reader.corners = try take[i64](total.corners)
+    reader.uv_table = try take[f64](total.uvs * 2)
+    reader.normal_table = try take[f64](total.normals * 3)
+    let with_uv = total.corners if total.uvs > 0 else 0
+    let with_normal = total.corners if total.normals > 0 else 0
+    reader.corner_uv_index = try take[i32](with_uv)
+    reader.corner_normal_index = try take[i32](with_normal)
+    reader.corner_uv = try take[f64](with_uv * 2)
+    reader.corner_normal = try take[f64](with_normal * 3)
+
+func count_chunk(context: void*?, index: usize):
+    let reader = (Reader*)(context else return)
+    let chunk = &reader.chunks[index]
+    let bytes = reader.data.data
+    let end = chunk.end
+    if reader.validate:
+        chunk.high = high_bits(bytes, chunk.start, end)
+    var at = chunk.start
+    while at < end:
+        at = skip_separators(bytes, at, end)
+        if at == end:
+            break
+        let first = bytes[at]
+        if first == 10:
+            at = at +% 1
+            continue
+        let kind = at
+        at = token_end(bytes, at, end)
+        let length = at - kind
+        if first == 'v' and length == 1:
+            chunk.points += 1
+        elif first == 'v' and length == 2 and bytes[kind + 1] == 't':
+            chunk.uvs += 1
+        elif first == 'v' and length == 2 and bytes[kind + 1] == 'n':
+            chunk.normals += 1
+        elif first == 'f' and length == 1:
+            var count: usize = 0
+            while true:
+                at = skip_separators(bytes, at, end)
+                if at == end or bytes[at] == 10 or bytes[at] == '#':
+                    break
+                at = token_end(bytes, at, end)
+                count += 1
+            if count < 3 or count > 256:
+                chunk.failed = true
+                return
+            chunk.faces += 1
+            chunk.corners += count
+        at = line_end(bytes, at, end)
+
+## 0x80 when bytes[start..<end] holds a byte of 0x80 or above, else 0. Aligned
+## words are read eight bytes at a time.
+func high_bits(bytes: const u8*, start: usize, end: usize) -> u8:
+    var at = start
+    var any: u8 = 0
+    while at < end and ((usize)(bytes + at) & 7) != 0:
+        any |= bytes[at]
+        at = at +% 1
+    let words = (const u64*)(bytes + at)
+    let count = (end - at) // 8
+    var mixed: u64 = 0
+    for word in 0..<count:
+        mixed |= words[word]
+    at += count * 8
+    while at < end:
+        any |= bytes[at]
+        at = at +% 1
+    return 128 if (any & 128) != 0 or (mixed & 0x8080808080808080) != 0 else 0
+
+func parse_chunk(context: void*?, index: usize):
+    let reader = (Reader*)(context else return)
+    let chunk = &reader.chunks[index]
+    parse(reader, chunk) catch failure:
+        discard(failure)
+        chunk.failed = true
+        return
+
+## One token of a line: bytes[start..<end], empty at the line's end.
+struct Token:
+    var start: usize
+    var end: usize
+
+    func empty() -> bool:
+        return self.start == self.end
+
+inline func next_token(bytes: const u8*, at: usize*, end: usize) -> Token:
+    let start = skip_separators(bytes, *at, end)
+    let stop = token_end(bytes, start, end)
+    *at = stop
+    return Token(start, stop)
+
+## What the next token of a line holds, as the reference decoder tells
+## optional fields apart: nothing (the line ended), a comment, or a value.
+enum Next as u8:
+    blank = 0
+    comment = 1
+    value = 2
+
+inline func peek(bytes: const u8*, at: usize, end: usize) -> Next:
+    let start = skip_separators(bytes, at, end)
+    if start == end or bytes[start] == 10:
+        return Next.blank
+    return Next.comment if bytes[start] == '#' else Next.value
+
+## An optional number field: its value when the next token is one, else 0
+## with a comment token consumed, as the reference decoder does.
+inline func optional(data: const u8[], at: usize*, end: usize, next: Next) -> f64!:
+    if next == Next.value:
+        return try numbers.field(data, at, end)
+    if next == Next.comment:
+        discard(next_token(data.data, at, end))
+    return 0.0
+
+## Parse one chunk's records into the shared arrays. Any failure is judged
+## again by the reference decoder, so this only has to notice it.
+func parse(reader: Reader*, chunk: Chunk*) -> !:
+    let data = reader.data
+    let bytes = data.data
+    let end = chunk.end
+    var np = chunk.first_point
+    var nu = chunk.first_uv
+    var nn = chunk.first_normal
+    var nf = chunk.first_face
+    var nc = chunk.first_corner
+    let keep_uv = reader.corner_uv_index.length > 0
+    let keep_normal = reader.corner_normal_index.length > 0
+    var at = chunk.start
+    while at < end:
+        let kind = next_token(bytes, &at, end)
+        if kind.empty() or bytes[kind.start] == '#':
+            at = line_end(bytes, at, end)
+            continue
+        let first = bytes[kind.start]
+        let length = kind.end - kind.start
+        if first == 'v' and length == 1:
+            let x = try numbers.field(data, &at, end)
+            let y = try numbers.field(data, &at, end)
+            let z = try numbers.field(data, &at, end)
+            let weighted = peek(bytes, at, end)
+            if weighted == Next.value:
+                let w = try numbers.field(data, &at, end)
+                if w == 0.0 or peek(bytes, at, end) == Next.value:
+                    error(invalid, "unsupported homogeneous vertex")
+                reader.points[np] = Vector3(x / w, y / w, z / w)
+            else:
+                reader.points[np] = Vector3(x, y, z)
+            np += 1
+        elif first == 'v' and length == 2 and (bytes[kind.start + 1] == 't' or bytes[kind.start + 1] == 'n'):
+            let x = try numbers.field(data, &at, end)
+            let has_y = peek(bytes, at, end)
+            let y = try optional(data, &at, end, has_y)
+            let has_z = peek(bytes, at, end)
+            let z = try optional(data, &at, end, has_z)
+            if bytes[kind.start + 1] == 't':
+                reader.uv_table[nu * 2] = x
+                reader.uv_table[nu * 2 + 1] = y
+                nu += 1
+            else:
+                if has_y == Next.blank or has_z == Next.blank:
+                    error(invalid, "invalid normal")
+                reader.normal_table[nn * 3] = x
+                reader.normal_table[nn * 3 + 1] = y
+                reader.normal_table[nn * 3 + 2] = z
+                nn += 1
+        elif first == 'f' and length == 1:
+            let face = nc
+            while true:
+                at = skip_separators(bytes, at, end)
+                if at == end or bytes[at] == 10 or bytes[at] == '#':
+                    break
+                # p, p/t, p//n or p/t/n; the normal field runs to the token's end.
+                reader.corners[nc] = try numbers.reference_at(data, &at, end, np, true)
+                var uv: i64 = -1
+                var normal: i64 = -1
+                if at < end and bytes[at] == '/':
+                    at += 1
+                    if at < end and bytes[at] != '/' and not delimiter(bytes[at]):
+                        uv = try numbers.reference_at(data, &at, end, nu, true)
+                        chunk.used_uv = true
+                    if at < end and bytes[at] == '/':
+                        at += 1
+                        normal = try numbers.reference_at(data, &at, end, nn, false)
+                        chunk.used_normal = true
+                if keep_uv:
+                    reader.corner_uv_index[nc] = (i32)uv
+                if keep_normal:
+                    reader.corner_normal_index[nc] = (i32)normal
+                nc += 1
+            reader.sizes[nf] = (i64)(nc - face)
+            nf += 1
+        elif not keyword(reader.data, kind):
+            error(invalid, "unsupported OBJ record")
+        at = line_end(bytes, at, end)
+    if np != chunk.first_point + chunk.points or nf != chunk.first_face + chunk.faces or nc != chunk.first_corner + chunk.corners:
+        error(invalid, "OBJ chunk counts disagree")
+
+## The declarations the reference decoder accepts and ignores.
+func keyword(data: const u8[], kind: Token) -> bool:
+    let word = (str)data[kind.start..<kind.end]
+    return word == "o" or word == "g" or word == "s" or word == "mtllib" or word == "usemtl"
+
+func gather_chunk(context: void*?, index: usize):
+    let reader = (Reader*)(context else return)
+    let chunk = &reader.chunks[index]
+    let first = chunk.first_corner
+    let last = first + chunk.corners
+    if reader.corner_uv_index.length > 0:
+        for corner in first..<last:
+            let at = reader.corner_uv_index[corner]
+            reader.corner_uv[corner * 2] = reader.uv_table[(usize)at * 2] if at >= 0 else 0.0
+            reader.corner_uv[corner * 2 + 1] = reader.uv_table[(usize)at * 2 + 1] if at >= 0 else 0.0
+    if reader.corner_normal_index.length > 0:
+        for corner in first..<last:
+            let at = reader.corner_normal_index[corner]
+            reader.corner_normal[corner * 3] = reader.normal_table[(usize)at * 3] if at >= 0 else 0.0
+            reader.corner_normal[corner * 3 + 1] = reader.normal_table[(usize)at * 3 + 1] if at >= 0 else 0.0
+            reader.corner_normal[corner * 3 + 2] = reader.normal_table[(usize)at * 3 + 2] if at >= 0 else 0.0

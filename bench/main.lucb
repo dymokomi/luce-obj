@@ -1,0 +1,35 @@
+## Times Obj.load (the fast reader: read, parse, build) and
+## Obj.decode_reference (the original decoder, on text already read) on each
+## OBJ file named on the command line, best of three and of two. Both include
+## the PolygonMesh build (edges, triangulation, normals), luce-geocore's part.
+import time
+import files
+import memory
+from obj import Obj
+from geocore import PolygonMesh
+
+func now() -> f64:
+    return (f64)(time.now()) / 1000000.0
+
+pub func main(arguments: str[]) -> i32!:
+    for path in arguments[1..]:
+        var fast: f64 = 1e300
+        var faces: i64 = 0
+        for round in 0..<3:
+            let start = now()
+            let mesh = try Obj.load(path)
+            let elapsed = now() - start
+            fast = elapsed if elapsed < fast else fast
+            faces = mesh.value().face_count()
+            mesh.release()
+        let text = try files.read_text(path, 1073741824)
+        defer text.release()
+        var reference: f64 = 1e300
+        for round in 0..<(usize)2:
+            let start = now()
+            let mesh = try Obj.decode_reference(text.value)
+            let elapsed = now() - start
+            reference = elapsed if elapsed < reference else reference
+            mesh.release()
+        print(f"{path}: {faces} faces, {text.value.length // 1048576} MiB: load {fast} ms, reference decode {reference} ms")
+    return 0

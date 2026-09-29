@@ -1,0 +1,38 @@
+## Line and token boundaries in OBJ bytes, shared by the reader and the
+## number parsers. Tokens are split by space, tab and carriage return, as
+## scan.Tokens does; a line feed ends the line. Loops step with wrapping
+## adds: every index stays below `end`, and the checked form costs a branch
+## per byte.
+
+pub inline func separator(byte: u8) -> bool:
+    return byte == 32 or byte == 9 or byte == 13
+
+pub inline func skip_separators(bytes: const u8*, at: usize, end: usize) -> usize:
+    var cursor = at
+    while cursor < end and separator(bytes[cursor]):
+        cursor = cursor +% 1
+    return cursor
+
+pub inline func token_end(bytes: const u8*, at: usize, end: usize) -> usize:
+    var cursor = at
+    while cursor < end:
+        let byte = bytes[cursor]
+        if byte == 32 or byte == 9 or byte == 13 or byte == 10:
+            return cursor
+        cursor = cursor +% 1
+    return cursor
+
+extern func memchr(source: const void*, value: i32, count: usize) -> const void*?
+
+## Just past the line feed ending the line at `at`, or `end`.
+pub inline func line_end(bytes: const u8*, at: usize, end: usize) -> usize:
+    if at < end and bytes[at] == 10:
+        return at + 1
+    if at >= end:
+        return end
+    let found = memchr(bytes + at, 10, end - at) else return end
+    return (usize)((const u8*)found - bytes) + 1
+
+## Whether `byte` ends a token: a separator or a line feed.
+pub inline func delimiter(byte: u8) -> bool:
+    return byte == 32 or byte == 9 or byte == 13 or byte == 10

@@ -1,0 +1,18 @@
+#prisma 4.0
+def package "luce_obj_bench" {
+    str source = "."
+    str language = "luce-base"
+    def dependency "luce-obj" {
+        str path = ".."
+    }
+    def dependency "luce-geocore" {
+        str owner = "dymokomi"
+        str version = "^0.1.0"
+        str path = "../../luce-geocore"
+    }
+    def dependency "luce-std" {
+        str owner = "dymokomi"
+        str version = "^0.1.0"
+        str path = "../../luce-std"
+    }
+}
