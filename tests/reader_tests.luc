@@ -2,11 +2,11 @@
 ## identical meshes and attributes on generated fixtures, identical errors on
 ## malformed text.
 from obj import Obj
-from geocore import PolygonMesh
+from geocore import Mesh
 import files
 
 ## Bit-for-bit equal positions, polygons and corner attributes.
-func identical(a: PolygonMesh, b: PolygonMesh) -> unit!:
+func identical(a: Mesh, b: Mesh) -> unit!:
     assert(a.point_count() == b.point_count() and a.face_count() == b.face_count() and a.vertex_count() == b.vertex_count())
     for index in 0..<a.point_count():
         let p = a.point(index)
@@ -30,7 +30,7 @@ func identical(a: PolygonMesh, b: PolygonMesh) -> unit!:
                     assert(a.attribute_value(left, corner, component) == b.attribute_value(right, corner, component))
 
 ## Load and decode `path` both ways; return the reference mesh.
-func matches(path: str) -> PolygonMesh!:
+func matches(path: str) -> Mesh!:
     let text = files.read_text(path, 67108864)
     let reference = Obj.decode_reference(text)
     identical(Obj.decode(text), reference)

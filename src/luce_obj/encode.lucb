@@ -1,12 +1,12 @@
 ## Wavefront text output, the counterpart of the decoder in obj.lucb.
 import strings
-from geocore import PolygonMesh, invalid
+from geocore import Mesh, invalid
 
 ## Append `mesh` as OBJ text. Every point becomes a `v` line with 17
 ## significant digits (a binary64 round trip). With `attributes`, a mesh's
 ## corner-domain `uv` and `N` become one `vt` and one `vn` per corner. Each
 ## polygon becomes an `f` line of 1-based indices: `p`, `p/t`, `p//n` or `p/t/n`.
-pub func encode(output: strings.Builder*, mesh: PolygonMesh*, attributes: bool) -> !:
+pub func encode(output: strings.Builder*, mesh: Mesh*, attributes: bool) -> !:
     var scratch: u8[64]
     for index in 0..<mesh.point_count():
         let p = try mesh.point(index)
@@ -40,14 +40,14 @@ pub func encode(output: strings.Builder*, mesh: PolygonMesh*, attributes: bool) 
 
 ## The corner-domain attribute `name`, or -1 when the mesh has none. One with
 ## too few components cannot be written as OBJ records.
-func corner_attribute(mesh: PolygonMesh*, name: str, width: i64) -> i64!:
+func corner_attribute(mesh: Mesh*, name: str, width: i64) -> i64!:
     let attribute = mesh.find_attribute(name, 1)
     if attribute >= 0 and (try mesh.attribute_width(attribute)) < width:
         error(invalid, "OBJ corner uv needs two components and N three")
     return attribute
 
 ## One `kind` record per polygon corner, in corner order.
-func corners(output: strings.Builder*, mesh: PolygonMesh*, kind: str, attribute: i64, width: i64) -> !:
+func corners(output: strings.Builder*, mesh: Mesh*, kind: str, attribute: i64, width: i64) -> !:
     var scratch: u8[64]
     for corner in 0..<mesh.vertex_count():
         try output.put(kind)

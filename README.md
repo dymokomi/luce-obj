@@ -2,7 +2,7 @@
 
 An original **Luce Base** Wavefront polygon reader and writer. Public export:
 `obj.Obj`. `Obj.load(path)` reads a file; `Obj.decode(text)` decodes text. Both
-return an immutable `geocore.PolygonMesh` with shared positions and polygon corners.
+return an immutable `geocore.geocore Mesh` with shared positions and polygon corners.
 
 The reader scans the file bytes in place, in chunks split at line boundaries
 and parsed on luce-geocore's thread pool: a counting pass sizes every array,
@@ -10,7 +10,7 @@ a parsing pass writes points, faces, corners and the `vt`/`vn` tables straight
 into them, and corner UVs and normals are gathered by index. Numbers take
 Clinger's fast path or Eisel-Lemire, bit-identical to `strings.parse_f64`.
 A 400k-triangle, 14 MB file loads in under 20 ms on an M-series Mac, the
-PolygonMesh build included. `Obj.decode_reference(text)` is the original
+geocore Mesh build included. `Obj.decode_reference(text)` is the original
 single-pass decoder: the reader must match it exactly, and hands it any text
 it cannot take, so errors are reported with its wording and order.
 

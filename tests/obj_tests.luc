@@ -1,6 +1,6 @@
 ## Wavefront decoding (indices, UVs, normals, limits) and writing round trips.
 from obj import Obj
-from geocore import PolygonMesh, Vector3
+from geocore import Mesh, Vector3
 import math
 
 func near(a: float, b: float):
@@ -8,7 +8,7 @@ func near(a: float, b: float):
     assert(math.abs(a - b) < 0.000001)
 
 ## Positions and polygons match exactly; corner attributes match when both have them.
-func same(a: PolygonMesh, b: PolygonMesh) -> unit!:
+func same(a: Mesh, b: Mesh) -> unit!:
     assert(a.point_count() == b.point_count() and a.face_count() == b.face_count())
     for index in 0..<a.point_count():
         assert(a.point(index).subtract(b.point(index)).length() == 0.0)
@@ -37,11 +37,11 @@ pub func obj_tests() -> unit!:
         rejected = true
     assert(rejected)
     # Writing: positions round-trip bit for bit, polygons keep their sizes.
-    let cube = PolygonMesh.cube(2.0)
+    let cube = Mesh.cube(2.0)
     let text = Obj.encode(cube, attributes = false)
     assert(text.starts_with("v ") and not text.contains("vn ") and not text.contains("vt "))
     same(cube, Obj.decode(text))
-    let awkward = PolygonMesh([Vector3(0.1 + 0.2, 1.0 / 3.0, -1e-300), Vector3(999999.99999999988, 2.0 / 7.0, 3.0), Vector3(4.0, 5.0, 6.0)], [3], [0, 1, 2])
+    let awkward = Mesh([Vector3(0.1 + 0.2, 1.0 / 3.0, -1e-300), Vector3(999999.99999999988, 2.0 / 7.0, 3.0), Vector3(4.0, 5.0, 6.0)], [3], [0, 1, 2])
     same(awkward, Obj.decode(Obj.encode(awkward)))
     # Corner UVs and normals survive a write and a read.
     let textured = Obj.decode("v 0 0 0\nv 1 0 0\nv 1 1 0\nv 0 1 0\nv 2 0 0\nvt 0 0\nvt 1 0\nvt 1 1\nvt 0 1\nvn 0 0 1\nvn 0.6 0 0.8\n" +

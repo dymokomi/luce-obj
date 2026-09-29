@@ -6,11 +6,11 @@
 import interop
 import memory
 import strings
-from geocore import PolygonMesh, MeshBuilder, Vector3, invalid
+from geocore import Mesh, MeshBuilder, Vector3, invalid
 from luce_obj.scan import scan, Tokens
 
 ## Decode shared positions, polygon indices, corner UVs and corner normals.
-pub func decode_reference(text: str) -> interop.Reference[PolygonMesh]!:
+pub func decode_reference(text: str) -> interop.Reference[Mesh]!:
     if text.length > 1073741824:
         error(invalid, "OBJ exceeds 1 GiB input limit")
     let counts = try scan(text)
@@ -109,7 +109,7 @@ pub func decode_reference(text: str) -> interop.Reference[PolygonMesh]!:
             error(invalid, "unsupported OBJ record (polygon meshes only)")
     if mesh.np == 0:
         error(invalid, "OBJ contains no points")
-    return try PolygonMesh.from_corner_data(mesh.points[..<mesh.np], mesh.sizes[..<mesh.nf], mesh.corners[..<mesh.nc], corner_uv[..<(mesh.nc * 2 if has_uv else 0)], corner_normal[..<(mesh.nc * 3 if has_normal else 0)])
+    return try Mesh.from_corner_data(mesh.points[..<mesh.np], mesh.sizes[..<mesh.nf], mesh.corners[..<mesh.nc], corner_uv[..<(mesh.nc * 2 if has_uv else 0)], corner_normal[..<(mesh.nc * 3 if has_normal else 0)])
 
 func number(text: str) -> f64!:
     return try strings.parse_f64(text)

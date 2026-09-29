@@ -19,7 +19,7 @@ import interop
 import memory
 import utf8
 import files
-from geocore import PolygonMesh, Vector3, invalid
+from geocore import Mesh, Vector3, invalid
 import luce_obj.numbers as numbers
 from luce_obj.lexing import skip_separators, token_end, line_end, delimiter
 import geocore_parallel as pool
@@ -98,7 +98,7 @@ func release[T](values: T[]):
 
 ## Decode OBJ bytes. `validate` checks UTF-8 as reading a text file does;
 ## decoding a `str` needs no check.
-pub func decode(data: const u8[], validate: bool) -> interop.Reference[PolygonMesh]!:
+pub func decode(data: const u8[], validate: bool) -> interop.Reference[Mesh]!:
     if data.length > 1073741824:
         error(invalid, "OBJ exceeds 1 GiB input limit")
     var reader = Reader()
@@ -144,7 +144,7 @@ pub func decode(data: const u8[], validate: bool) -> interop.Reference[PolygonMe
     if used_uv or used_normal:
         pool.run(reader.chunks.length, gather_chunk, (void*)&reader)
     let nc = total.corners
-    return try PolygonMesh.from_corner_data(reader.points, reader.sizes, reader.corners, reader.corner_uv[..<(nc * 2 if used_uv else 0)], reader.corner_normal[..<(nc * 3 if used_normal else 0)])
+    return try Mesh.from_corner_data(reader.points, reader.sizes, reader.corners, reader.corner_uv[..<(nc * 2 if used_uv else 0)], reader.corner_normal[..<(nc * 3 if used_normal else 0)])
 
 ## Chunks of at least `chunk_bytes`, a few per thread, each ending just after
 ## a line feed (the last at the end of the text).

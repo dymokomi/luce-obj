@@ -1,12 +1,12 @@
 ## Times Obj.load (the fast reader: read, parse, build) and
 ## Obj.decode_reference (the original decoder, on text already read) on each
 ## OBJ file named on the command line, best of three and of two. Both include
-## the PolygonMesh build (edges, triangulation, normals), luce-geocore's part.
+## the Mesh build (edges, triangulation, normals), luce-geocore's part.
 import time
 import files
 import memory
 from obj import Obj
-from geocore import PolygonMesh
+from geocore import Mesh
 
 func now() -> f64:
     return (f64)(time.now()) / 1000000.0
