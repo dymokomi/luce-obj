@@ -2,7 +2,7 @@
 
 An original **Luce Base** Wavefront polygon reader and writer. Public export:
 `obj.Obj`. `Obj.load(path)` reads a file; `Obj.decode(text)` decodes text. Both
-return an immutable `geocore.geocore Mesh` with shared positions and polygon corners.
+return an immutable luce-geocore `Mesh` with shared positions and polygon corners.
 
 The reader scans the file bytes in place, in chunks split at line boundaries
 and parsed on luce-geocore's thread pool: a counting pass sizes every array,
