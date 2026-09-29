@@ -1,8 +1,15 @@
 # luce-obj
 
-An original **Luce Base** Wavefront polygon reader. Public export: `obj.Obj`.
-`Obj.load(path)` reads a file; `Obj.decode(text)` decodes text. Both return an
-immutable `three.PolygonMesh` with shared positions and polygon corners.
+An original **Luce Base** Wavefront polygon reader and writer. Public export:
+`obj.Obj`. `Obj.load(path)` reads a file; `Obj.decode(text)` decodes text. Both
+return an immutable `three.PolygonMesh` with shared positions and polygon corners.
+
+`Obj.write(path, mesh, attributes=true)` writes a mesh, replacing the file
+atomically; `Obj.encode(mesh, attributes=true)` returns the text. Points become
+`v` lines with 17 significant digits, so binary64 positions round-trip exactly.
+With `attributes`, corner-domain `uv` and `N` become one `vt` and one `vn` per
+corner. Each polygon becomes one `f` line with 1-based indices (`p`, `p/t`,
+`p//n` or `p/t/n`). Other attributes, groups and materials are not written.
 
 Supports `v`, `vt`, `vn`, polygon `f`, positive/negative indices, `v/vt/vn` and
 `v//vn`. UVs and normals become corner-domain `uv` and `N` attributes. Optional
@@ -19,6 +26,7 @@ fixtures have completed production-importer tests.
 Malformed indices, degenerate polygons and unsupported geometry records fail
 explicitly. Import preserves source coordinates and units.
 
-Regression coverage is currently integrated into sibling `luced-3d`:
-`python3 tests/run.py` there builds the Base library through a Luce consumer.
+`./test.sh` runs the Luce regressions in `tests/` native and through the C
+backend: indices, UVs, normals, the 65,536-corner regression and write/read
+round trips. CI pins the compilers and sibling packages in `bootstrap/PACKAGES`.
 There is no C/C++ parser, foreign SDK or import subprocess.

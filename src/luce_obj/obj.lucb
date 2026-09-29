@@ -4,6 +4,7 @@ import memory
 import strings
 from three import PolygonMesh, MeshBuilder, Vector3, invalid
 from luce_obj.scan import scan, Tokens
+import luce_obj.encode as encoding
 
 pub struct Obj:
     let reserved: u8 = 0
@@ -115,6 +116,21 @@ pub struct Obj:
         if mesh.np == 0:
             error(invalid, "OBJ contains no points")
         return try PolygonMesh.from_corner_data(mesh.points[..<mesh.np], mesh.sizes[..<mesh.nf], mesh.corners[..<mesh.nc], corner_uv[..<(mesh.nc * 2 if has_uv else 0)], corner_normal[..<(mesh.nc * 3 if has_normal else 0)])
+
+    ## Wavefront text for `mesh`: `v` per point with 17 significant digits,
+    ## optional per-corner `vt`/`vn` from corner-domain `uv`/`N`, and `f` per polygon.
+    pub static func encode(mesh: interop.Reference[PolygonMesh], attributes: bool = true) -> interop.Owned[str]!:
+        var output = try strings.Builder.create(4096)
+        defer output.destroy()
+        try encoding.encode(&output, try mesh.get(), attributes)
+        return try interop.copy_text(output.view())
+
+    ## Write `mesh` to `path` as `encode` does, replacing the file atomically.
+    pub static func write(path: str, mesh: interop.Reference[PolygonMesh], attributes: bool = true) -> !:
+        var output = try strings.Builder.create(4096)
+        defer output.destroy()
+        try encoding.encode(&output, try mesh.get(), attributes)
+        try files.write_text(path, output.view())
 
 func number(text: str) -> f64!:
     return try strings.parse_f64(text)

@@ -1,0 +1,6 @@
+# luce-obj's Luce regressions.
+from obj_tests import obj_tests
+
+pub func main(arguments: list[str]) -> int!:
+    obj_tests()
+    return 0
