@@ -2,7 +2,7 @@ import files
 import interop
 import memory
 import strings
-from three import PolygonMesh, MeshBuilder, Vector3, invalid
+from geocore import PolygonMesh, MeshBuilder, Vector3, invalid
 from luce_obj.scan import scan, Tokens
 import luce_obj.encode as encoding
 

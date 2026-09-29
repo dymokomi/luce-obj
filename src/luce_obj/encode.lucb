@@ -1,6 +1,6 @@
 ## Wavefront text output, the counterpart of the decoder in obj.lucb.
 import strings
-from three import PolygonMesh, invalid
+from geocore import PolygonMesh, invalid
 
 ## Append `mesh` as OBJ text. Every point becomes a `v` line with 17
 ## significant digits (a binary64 round trip). With `attributes`, a mesh's

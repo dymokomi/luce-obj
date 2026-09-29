@@ -2,7 +2,7 @@
 
 An original **Luce Base** Wavefront polygon reader and writer. Public export:
 `obj.Obj`. `Obj.load(path)` reads a file; `Obj.decode(text)` decodes text. Both
-return an immutable `three.PolygonMesh` with shared positions and polygon corners.
+return an immutable `geocore.PolygonMesh` with shared positions and polygon corners.
 
 `Obj.write(path, mesh, attributes=true)` writes a mesh, replacing the file
 atomically; `Obj.encode(mesh, attributes=true)` returns the text. Points become
