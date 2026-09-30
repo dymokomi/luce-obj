@@ -26,7 +26,7 @@ pub func scan(text: str) -> Counts!:
                 let token = tokens.next()
                 if token == "" or token.bytes[0] == 35: break
                 count += 1
-            if count < 3 or count > 256: error(invalid, "OBJ face needs 3..256 corners")
+            if count < 3: error(invalid, "OBJ face needs at least 3 corners")
             result.faces += 1
             result.corners += count
         if result.points > 8388608 or result.faces > 8388608 or result.corners > 33554432 or result.uv > 33554432 or result.normals > 33554432:

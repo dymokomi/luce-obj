@@ -1,7 +1,7 @@
 #prisma 4.0
 def package "luce-obj" {
     str owner = "dymokomi"
-    str version = "0.4.0"
+    str version = "0.4.1"
     str kind = "package"
     str language = "luce-base"
     str readme = "README.md"
@@ -11,7 +11,7 @@ def package "luce-obj" {
     }
     def dependency "luce-geocore" {
         str owner = "dymokomi"
-        str version = "^0.2.0"
+        str version = "^0.2.3"
         str path = "../luce-geocore"
     }
     def dependency "luce-std" {

@@ -29,12 +29,13 @@ MTL files and texture paths are never opened. Curves, freeform surfaces, vertex
 color extensions and line continuations are not supported.
 
 Limits: 1 GiB input, 8,388,608 points/faces, 33,554,432 corners or UV/normal
-records, 256 corners per face. A preflight sizes all attribute buffers before
+records; faces may have any number of corners. A preflight sizes all attribute buffers before
 decoding. Input is still read in full; these are safety budgets, not a promise
 that every device has enough memory. The 4.17M- and 5.58M-triangle Desktop car
 fixtures have completed production-importer tests.
-Malformed indices, degenerate polygons and unsupported geometry records fail
-explicitly. Import preserves source coordinates and units.
+Malformed indices and unsupported geometry records fail explicitly; a face
+without an area (collinear or coincident corners) is kept, as luce-geocore
+keeps it. Import preserves source coordinates and units.
 
 `./test.sh` runs the Luce regressions in `tests/` native and through the C
 backend: indices, UVs, normals, the 65,536-corner regression, write/read

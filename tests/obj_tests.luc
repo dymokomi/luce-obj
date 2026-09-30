@@ -52,6 +52,18 @@ pub func obj_tests() -> unit!:
     let normals_only = Obj.decode("v 0 0 0\nv 1 0 0\nv 0 1 0\nvn 0 0 1\nf 1//1 2//1 3//1\n")
     assert(Obj.encode(normals_only).contains("f 1//1 2//2 3//3"))
     same(normals_only, Obj.decode(Obj.encode(normals_only)))
+    # A 1000-corner n-gon (a concave star) writes and reads as one face.
+    var star_points: list[Vector3] = []
+    var star_corners: list[int] = []
+    for at in 0..<1000:
+        let radius = 1.0 if at % 2 == 0 else 0.8
+        let angle = 2.0 * math.pi * float(at) / 1000.0
+        star_points.append(Vector3(radius * math.cos(angle), radius * math.sin(angle), 0.0))
+        star_corners.append(at)
+    let star = Mesh(star_points, [1000], star_corners)
+    let star_again = Obj.decode(Obj.encode(star))
+    assert(star_again.face_count() == 1 and star_again.face_size(0) == 1000)
+    same(star, star_again)
     Obj.write("written.obj", textured)
     same(textured, Obj.load("written.obj"))
     print("PASS OBJ indices, UVs, normals and limits; writing round-trips positions, polygons, UVs and normals")

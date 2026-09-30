@@ -227,7 +227,7 @@ func count_chunk(context: void*?, index: usize):
                     break
                 at = token_end(bytes, at, end)
                 count += 1
-            if count < 3 or count > 256:
+            if count < 3:
                 chunk.failed = true
                 return
             chunk.faces += 1

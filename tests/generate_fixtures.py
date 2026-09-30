@@ -72,10 +72,10 @@ def numbers(rng):
 
 
 def polygons():
-    """Convex polygons of 3..256 sides, each on its own points."""
+    """Convex polygons of 3..1000 sides, each on its own points."""
     lines = []
     points = 0
-    for sides in list(range(3, 40)) + [100, 255, 256]:
+    for sides in list(range(3, 40)) + [100, 255, 256, 257, 1000]:
         for step in range(sides):
             angle = 2 * math.pi * step / sides
             lines.append("v %.9f %.9f %d" % (math.cos(angle), math.sin(angle), sides))

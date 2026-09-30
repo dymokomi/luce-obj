@@ -4,6 +4,7 @@
 from obj import Obj
 from geocore import Mesh
 import files
+import math
 
 ## Bit-for-bit equal positions, polygons and corner attributes.
 func identical(a: Mesh, b: Mesh) -> unit!:
@@ -53,7 +54,7 @@ pub func reader_tests() -> unit!:
     let numbers = matches("tests/fixtures/numbers.obj")
     assert(numbers.point_count() == 3003 and numbers.face_count() == 4000)
     let polygons = matches("tests/fixtures/polygons.obj")
-    assert(polygons.face_size(polygons.face_count() - 1) == 256)
+    assert(polygons.face_size(polygons.face_count() - 1) == 1000)
     let mixed = matches("tests/fixtures/mixed.obj")
     assert(mixed.find_attribute("uv", 1) >= 0 and mixed.find_attribute("N", 1) >= 0)
     # CRLF line ends and tab/blank runs decode to the very same mesh.
@@ -69,19 +70,27 @@ pub func reader_tests() -> unit!:
                  "v 0 0 0\nv 1 0 0\nv 0 1 0\nvt 1 1\nvn 0 0 1\nf 1 2 3\n",
                  "v 0 0 0\r\nv 1 0 0\r\nv 0 1 0\r\n\r\nf 1 2 3\r\n",
                  "v 1 2 3\n",
+                 "v 0 0 0\nv 1 0 0\nv 2 0 0\nf 1 2 3\n",
                  "  v\t0 0 0 # a point\n v 1 0 0\nv 0 1 0\nf 1 2 3 # the face\n#end"]:
         identical(Obj.decode(text), Obj.decode_reference(text))
     for text in ["", "# nothing\n", "v 0 0 0\nf 0 1 2\n", "v 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 4\n",
                  "v 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2\n", "v 0 0\n", "v 0 0 0 0\n", "v 0 0 0 1 1\n",
                  "v 1 2 3x\n", "v 1e999 0 0\n", "vn 0 1\n", "l 1 2\n", "v 0 0 0\nv 1 0 0\nv 0 1 0\nf 1/1 2/1 3/1\n",
-                 "v 0 0 0\nv 1 0 0\nv 0 1 0\nf 1// 2// 3//\n", "v 0 0 0\nv 1 0 0\nv 2 0 0\nf 1 2 3\n",
+                 "v 0 0 0\nv 1 0 0\nv 0 1 0\nf 1// 2// 3//\n",
                  "v 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 99999999999999999999\n", "v nan 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n",
                  "v x 0 0\nf 1 2\n", "v 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3 -4\n"]:
         fails_alike(text)
-    var face = "v 0 0 0\nf"
-    for _ in 0..<257:
-        face = face + " 1"
-    fails_alike(face + "\n")
+    # A face may have any number of corners: a 1000-corner star decodes
+    # alike, and one short of 3 corners still fails alike.
+    var star = ""
+    var face = "f"
+    for at in 0..<1000:
+        let radius = 1.0 if at % 2 == 0 else 0.8
+        let angle = 2.0 * math.pi * float(at) / 1000.0
+        star = star + f"v {radius * math.cos(angle)} {radius * math.sin(angle)} 0\n"
+        face = face + f" {at + 1}"
+    identical(Obj.decode(star + face + "\n"), Obj.decode_reference(star + face + "\n"))
+    fails_alike(star + "f 1 2\n")
     # An error late in a many-chunk file, after valid chunks.
     fails_alike(files.read_text("tests/fixtures/chunked.obj", 67108864) + "f 1 2 999999\n")
     # Loading validates UTF-8 as reading text does.
