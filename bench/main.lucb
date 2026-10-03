@@ -3,7 +3,7 @@
 ## OBJ file named on the command line, best of three and of two. Both include
 ## the Mesh build (edges, triangulation, normals), luce-geocore's part.
 import time
-import luce_std.files
+from luce_std import files
 import memory
 from luce_obj.obj import Obj
 from luce_geocore.geocore import Mesh

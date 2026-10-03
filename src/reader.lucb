@@ -17,12 +17,11 @@
 ## never has to reproduce error order or wording itself.
 import interop
 import memory
-import luce_std.utf8
-import luce_std.files
+from luce_std import utf8, files
 from luce_geocore.geocore import Mesh, Vector3, invalid
 import numbers
 from lexing import skip_separators, token_end, line_end, delimiter
-import luce_geocore.core.parallel as pool
+from luce_geocore.core import parallel as pool
 import reference
 from scan import scan
 

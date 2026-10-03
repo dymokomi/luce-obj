@@ -3,8 +3,7 @@
 ## malformed text.
 from luce_obj.obj import Obj
 from luce_geocore.geocore import Mesh
-import luce_std.files
-import luce_std.math
+from luce_std import files, math
 
 ## Bit-for-bit equal positions, polygons and corner attributes.
 func identical(a: Mesh, b: Mesh) -> unit!:
