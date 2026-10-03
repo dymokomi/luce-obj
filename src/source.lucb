@@ -5,8 +5,8 @@
 import c
 import memory
 import strings
-import utf8
-import files
+import luce_std.utf8
+import luce_std.files
 
 ## The bytes of the file at `path`, at most `limit` of them, on memory.heap.
 pub func read(path: str, limit: usize) -> u8[]!:

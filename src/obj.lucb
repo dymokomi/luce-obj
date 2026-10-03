@@ -1,12 +1,12 @@
-import files
+import luce_std.files
 import interop
 import memory
 import strings
-from geocore import Mesh
-import luce_obj.encode as encoding
-import luce_obj.reader as reader
-import luce_obj.reference as reference
-import luce_obj.source as source
+from luce_geocore.geocore import Mesh
+import encode as encoding
+import reader
+import reference
+import source
 
 pub struct Obj:
     let reserved: u8 = 0

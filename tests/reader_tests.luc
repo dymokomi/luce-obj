@@ -1,10 +1,10 @@
 ## The fast reader against the original decoder it replaced (Obj.decode_reference):
 ## identical meshes and attributes on generated fixtures, identical errors on
 ## malformed text.
-from obj import Obj
-from geocore import Mesh
-import files
-import math
+from luce_obj.obj import Obj
+from luce_geocore.geocore import Mesh
+import luce_std.files
+import luce_std.math
 
 ## Bit-for-bit equal positions, polygons and corner attributes.
 func identical(a: Mesh, b: Mesh) -> unit!:

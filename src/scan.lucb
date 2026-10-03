@@ -1,5 +1,5 @@
 ## Allocation preflight for untrusted OBJ text. No per-record heap allocations.
-from geocore import invalid
+from luce_geocore.geocore import invalid
 
 pub struct Counts:
     pub var points: usize = 0

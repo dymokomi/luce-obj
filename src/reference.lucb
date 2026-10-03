@@ -6,8 +6,8 @@
 import interop
 import memory
 import strings
-from geocore import Mesh, MeshBuilder, Vector3, invalid
-from luce_obj.scan import scan, Tokens
+from luce_geocore.geocore import Mesh, MeshBuilder, Vector3, invalid
+from scan import scan, Tokens
 
 ## Decode shared positions, polygon indices, corner UVs and corner normals.
 pub func decode_reference(text: str) -> interop.Reference[Mesh]!:

@@ -6,9 +6,9 @@
 ## references) goes to those parsers with the whole token, so values and
 ## errors match the reference decoder exactly.
 import strings
-import luce_obj.reference as reference
-import luce_obj.lemire as lemire
-from luce_obj.lexing import skip_separators, token_end, delimiter
+import reference
+import lemire
+from lexing import skip_separators, token_end, delimiter
 
 ## Every power of ten that f64 holds exactly.
 let powers: f64[23] = [1.0, 10.0, 100.0, 1000.0, 10000.0, 100000.0, 1000000.0, 10000000.0,

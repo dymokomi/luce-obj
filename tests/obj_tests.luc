@@ -1,7 +1,7 @@
 ## Wavefront decoding (indices, UVs, normals, limits) and writing round trips.
-from obj import Obj
-from geocore import Mesh, Vector3
-import math
+from luce_obj.obj import Obj
+from luce_geocore.geocore import Mesh, Vector3
+import luce_std.math
 
 func near(a: float, b: float):
     if math.abs(a - b) >= 0.000001: print(f"near failed: actual={a}, expected={b}")
