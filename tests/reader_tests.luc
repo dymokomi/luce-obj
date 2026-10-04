@@ -40,10 +40,10 @@ func matches(path: str) -> Mesh!:
 ## Both decoders reject `text`, with the same message.
 func fails_alike(text: str) -> unit!:
     var fast = ""
-    discard(Obj.decode(text)) catch failure:
+    _ = Obj.decode(text) catch failure:
         fast = failure.message
     var slow = ""
-    discard(Obj.decode_reference(text)) catch failure:
+    _ = Obj.decode_reference(text) catch failure:
         slow = failure.message
     if fast == "" or fast != slow:
         print(f"errors differ: fast '{fast}', reference '{slow}'")
@@ -60,8 +60,8 @@ pub func reader_tests() -> unit!:
     identical(matches("tests/fixtures/mixed_crlf.obj"), mixed)
     let chunked = matches("tests/fixtures/chunked.obj")
     assert(chunked.face_count() > 20000)
-    discard(matches("tests/fixtures/large.obj"))
-    discard(matches("tests/fixtures/accents.obj"))
+    _ = matches("tests/fixtures/large.obj")
+    _ = matches("tests/fixtures/accents.obj")
     # Small cases: weights, explicit plus signs, UVs on some faces only, points only.
     for text in ["v 0 0 0 2\nv 2 0 0 2\nv 0 2 0 4\nf 1 2 3\n",
                  "v 0 0 0\nv 1 0 0\nv 0 1 0\nf +1 +2 +3\n",
@@ -95,7 +95,7 @@ pub func reader_tests() -> unit!:
     # Loading validates UTF-8 as reading text does.
     for name in ["bad_utf8", "chunked_bad_utf8"]:
         var message = ""
-        discard(Obj.load(f"tests/fixtures/{name}.obj")) catch failure:
+        _ = Obj.load(f"tests/fixtures/{name}.obj") catch failure:
             message = failure.message
         assert(message == "the file is not valid UTF-8")
     print("PASS OBJ reader matches the reference decoder: meshes, attributes, CRLF, n-gons, chunks and errors")

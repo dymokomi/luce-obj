@@ -33,7 +33,7 @@ pub func obj_tests() -> unit!:
     assert(mesh.point_count() == 4 and mesh.face_count() == 1)
     near(mesh.attribute_value(mesh.find_attribute("uv", 1), 2, 1), 1.0)
     var rejected = false
-    discard(Obj.decode("v 0 0 0\nf 0 1 2\n")) catch failure:
+    _ = Obj.decode("v 0 0 0\nf 0 1 2\n") catch failure:
         rejected = true
     assert(rejected)
     # Writing: positions round-trip bit for bit, polygons keep their sizes.
