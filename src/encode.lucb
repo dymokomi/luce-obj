@@ -29,13 +29,13 @@ pub func encode(output: strings.Builder*, mesh: Mesh*, attributes: bool) -> !:
         for corner in 0..<(try mesh.face_size(face)):
             let point = (try mesh.face_point(face, corner)) + 1
             let id = first + corner + 1
-            try output.put(try format(scratch, f" {point}"))
+            try output.put(try strings.format(scratch, f" {point}"))
             if uv >= 0 or normals >= 0:
                 try output.put("/")
                 if uv >= 0:
-                    try output.put(try format(scratch, f"{id}"))
+                    try output.put(try strings.format(scratch, f"{id}"))
                 if normals >= 0:
-                    try output.put(try format(scratch, f"/{id}"))
+                    try output.put(try strings.format(scratch, f"/{id}"))
         try output.put("\n")
 
 ## The corner-domain attribute `name`, or -1 when the mesh has none. One with

@@ -72,7 +72,7 @@ struct Reader:
     var corner_uv: f64[]
     var corner_normal: f64[]
 
-    mutating func close():
+    func close():
         release[Chunk](self.chunks)
         release[Vector3](self.points)
         release[i64](self.sizes)
@@ -89,7 +89,7 @@ func take[T](count: usize) -> T[]!:
     var empty: T[]
     if count == 0:
         return empty
-    return try alloc T[count] in memory.heap
+    return try new T[count] --- in memory.heap
 
 func release[T](values: T[]):
     if values.length > 0:
@@ -127,7 +127,7 @@ pub func decode(data: const u8[], validate: bool) -> interop.Reference[Mesh]!:
         error(files.invalid_options, "the file is not valid UTF-8")
     if failed or total.points > most_elements or total.faces > most_elements or total.corners > most_corners or total.uvs > most_corners or total.normals > most_corners:
         # The reference scan reports the face-size or budget error at its line.
-        discard(try scan((str)data))
+        _ = try scan((str)data)
         return try reference.decode_reference((str)data)
     try allocate(&reader, total)
     pool.run(reader.chunks.length, parse_chunk, (void*)&reader)
@@ -173,7 +173,7 @@ func split(data: const u8[]) -> Chunk[]!:
     if used == 0:
         ends[0] = data.length
         used = 1
-    let chunks = try alloc Chunk[used] in memory.heap
+    let chunks = try new Chunk[used] --- in memory.heap
     start = 0
     for at in 0..<used:
         chunks[at] = Chunk(start = start, end = ends[at])
@@ -256,7 +256,7 @@ func parse_chunk(context: void*?, index: usize):
     let reader = (Reader*)(context else return)
     let chunk = &reader.chunks[index]
     parse(reader, chunk) catch failure:
-        discard(failure)
+        _ = failure
         chunk.failed = true
         return
 
@@ -293,7 +293,7 @@ inline func optional(data: const u8[], at: usize*, end: usize, next: Next) -> f6
     if next == Next.value:
         return try numbers.field(data, at, end)
     if next == Next.comment:
-        discard(next_token(data.data, at, end))
+        _ = next_token(data.data, at, end)
     return 0.0
 
 ## Parse one chunk's records into the shared arrays. Any failure is judged

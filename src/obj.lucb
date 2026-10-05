@@ -12,30 +12,30 @@ pub struct Obj:
     let reserved: u8 = 0
 
     ## Read at most 1 GiB of polygon text; preflight bounds native allocations.
-    pub static func load(path: str) -> interop.Reference[Mesh]!:
+    pub func load(path: str) -> interop.Reference[Mesh]!:
         let data = try source.read(path, 1073741824)
         defer free(data) in memory.heap
         return try reader.decode(data, validate = true)
 
     ## Decode shared positions, polygon indices, corner UVs and corner normals.
-    pub static func decode(text: str) -> interop.Reference[Mesh]!:
+    pub func decode(text: str) -> interop.Reference[Mesh]!:
         return try reader.decode(text.bytes, validate = false)
 
     ## The original single-pass decoder, which `decode` must match exactly and
     ## which reports its errors. For tests and comparisons; several times slower.
-    pub static func decode_reference(text: str) -> interop.Reference[Mesh]!:
+    pub func decode_reference(text: str) -> interop.Reference[Mesh]!:
         return try reference.decode_reference(text)
 
     ## Wavefront text for `mesh`: `v` per point with 17 significant digits,
     ## optional per-corner `vt`/`vn` from corner-domain `uv`/`N`, and `f` per polygon.
-    pub static func encode(mesh: interop.Reference[Mesh], attributes: bool = true) -> interop.Owned[str]!:
+    pub func encode(mesh: interop.Reference[Mesh], attributes: bool = true) -> interop.Owned[str]!:
         var output = try strings.Builder.create(4096)
         defer output.destroy()
         try encoding.encode(&output, try mesh.get(), attributes)
         return try interop.copy_text(output.view())
 
     ## Write `mesh` to `path` as `encode` does, replacing the file atomically.
-    pub static func write(path: str, mesh: interop.Reference[Mesh], attributes: bool = true) -> !:
+    pub func write(path: str, mesh: interop.Reference[Mesh], attributes: bool = true) -> !:
         var output = try strings.Builder.create(4096)
         defer output.destroy()
         try encoding.encode(&output, try mesh.get(), attributes)

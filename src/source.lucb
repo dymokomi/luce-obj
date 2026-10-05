@@ -23,7 +23,7 @@ pub func read(path: str, limit: usize) -> u8[]!:
     var capacity = (usize)info.size + 1 if info.size >= 0 else 4096
     if capacity > limit + 1:
         capacity = limit + 1
-    var data = try alloc u8[capacity] in memory.heap
+    var data = try new u8[capacity] --- in memory.heap
     errdefer free(data) in memory.heap
     var used: usize = 0
     while true:
@@ -33,7 +33,7 @@ pub func read(path: str, limit: usize) -> u8[]!:
             var larger = data.length * 2
             if larger > limit + 1:
                 larger = limit + 1
-            let grown = try alloc u8[larger] in memory.heap
+            let grown = try new u8[larger] --- in memory.heap
             memory.copy(grown, data, used)
             free(data) in memory.heap
             data = grown

@@ -16,13 +16,13 @@ pub func decode_reference(text: str) -> interop.Reference[Mesh]!:
     let counts = try scan(text)
     var mesh = try MeshBuilder()
     defer mesh.close()
-    let uv = try alloc Vector3[counts.uv] in memory.heap
+    let uv = try new Vector3[counts.uv] --- in memory.heap
     defer free(uv) in memory.heap
-    let normals = try alloc Vector3[counts.normals] in memory.heap
+    let normals = try new Vector3[counts.normals] --- in memory.heap
     defer free(normals) in memory.heap
-    let corner_uv = try alloc f64[counts.corners * 2 if counts.uv > 0 else 0] in memory.heap
+    let corner_uv = try new f64[counts.corners * 2 if counts.uv > 0 else 0] --- in memory.heap
     defer free(corner_uv) in memory.heap
-    let corner_normal = try alloc f64[counts.corners * 3 if counts.normals > 0 else 0] in memory.heap
+    let corner_normal = try new f64[counts.corners * 3 if counts.normals > 0 else 0] --- in memory.heap
     defer free(corner_normal) in memory.heap
     var nu: usize = 0
     var nn: usize = 0
@@ -52,7 +52,7 @@ pub func decode_reference(text: str) -> interop.Reference[Mesh]!:
                 let tail = line.next()
                 if tail != "" and tail.bytes[0] != 35:
                     error(invalid, "OBJ vertex colors are not supported; expected v x y z [w]")
-            discard(try mesh.point(Vector3(x / w, y / w, z / w)))
+            _ = try mesh.point(Vector3(x / w, y / w, z / w))
         elif kind == "vt" or kind == "vn":
             let x = try number(line.next())
             let yt = line.next()

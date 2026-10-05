@@ -36,7 +36,8 @@ pub func scan(text: str) -> Counts!:
 pub struct Tokens:
     pub let text: str
     pub var at: usize
-    pub mutating func next() -> str:
+
+    pub func next() -> str:
         while self.at < self.text.length and (self.text.bytes[self.at] == 32 or self.text.bytes[self.at] == 9 or self.text.bytes[self.at] == 13): self.at += 1
         let start = self.at
         while self.at < self.text.length and self.text.bytes[self.at] != 32 and self.text.bytes[self.at] != 9 and self.text.bytes[self.at] != 13: self.at += 1
