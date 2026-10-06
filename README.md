@@ -41,5 +41,5 @@ keeps it. Import preserves source coordinates and units.
 backend: indices, UVs, normals, the 65,536-corner regression, write/read
 round trips, and the reader against the reference decoder (number spellings,
 n-gons, CRLF, negative and partial references, many-chunk files, malformed
-text). `python3 bench/run.py` times both on generated 400k- and 700k-face grids. CI pins the compilers and sibling packages in `bootstrap/PACKAGES`.
+text). `python3 bench/run.py` times both on generated 400k- and 700k-face grids. CI builds the compilers and checks out the sibling packages at main.
 There is no C/C++ parser, foreign SDK or import subprocess.
