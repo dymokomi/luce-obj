@@ -1,7 +1,6 @@
-from luce_std import files
+from luce_std import files, collections
 import interop
 import memory
-import strings
 from luce_geocore.geocore import Mesh
 import encode as encoding
 import reader
@@ -29,14 +28,14 @@ pub struct Obj:
     ## Wavefront text for `mesh`: `v` per point with 17 significant digits,
     ## optional per-corner `vt`/`vn` from corner-domain `uv`/`N`, and `f` per polygon.
     pub static func encode(mesh: interop.Reference[Mesh], attributes: bool = true) -> interop.Owned[str]!:
-        var output = try strings.Builder.create(4096)
+        var output: collections.Buffer
         defer output.destroy()
         try encoding.encode(&output, try mesh.get(), attributes)
-        return try interop.copy_text(output.view())
+        return try interop.copy_text(output.text())
 
     ## Write `mesh` to `path` as `encode` does, replacing the file atomically.
     pub static func write(path: str, mesh: interop.Reference[Mesh], attributes: bool = true) -> !:
-        var output = try strings.Builder.create(4096)
+        var output: collections.Buffer
         defer output.destroy()
         try encoding.encode(&output, try mesh.get(), attributes)
-        try files.write_text(path, output.view())
+        try files.write_text(path, output.text())

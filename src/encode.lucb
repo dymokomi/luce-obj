@@ -1,22 +1,23 @@
 ## Wavefront text output, the counterpart of the decoder in obj.lucb.
 import strings
+from luce_std import collections
 from luce_geocore.geocore import Mesh, invalid
 
 ## Append `mesh` as OBJ text. Every point becomes a `v` line with 17
 ## significant digits (a binary64 round trip). With `attributes`, a mesh's
 ## corner-domain `uv` and `N` become one `vt` and one `vn` per corner. Each
 ## polygon becomes an `f` line of 1-based indices: `p`, `p/t`, `p//n` or `p/t/n`.
-pub func encode(output: strings.Builder*, mesh: Mesh*, attributes: bool) -> !:
+pub func encode(output: collections.Buffer*, mesh: Mesh*, attributes: bool) -> !:
     var scratch: u8[64]
     for index in 0..<mesh.point_count():
         let p = try mesh.point(index)
-        try output.put("v ")
-        try output.put(try strings.format_f64(p.x, scratch))
-        try output.put(" ")
-        try output.put(try strings.format_f64(p.y, scratch))
-        try output.put(" ")
-        try output.put(try strings.format_f64(p.z, scratch))
-        try output.put("\n")
+        try output.put_text("v ")
+        try output.put_text(try strings.format_f64(p.x, scratch))
+        try output.put_text(" ")
+        try output.put_text(try strings.format_f64(p.y, scratch))
+        try output.put_text(" ")
+        try output.put_text(try strings.format_f64(p.z, scratch))
+        try output.put_text("\n")
     let uv = try corner_attribute(mesh, "uv", 2) if attributes else -1
     let normals = try corner_attribute(mesh, "N", 3) if attributes else -1
     if uv >= 0:
@@ -24,19 +25,19 @@ pub func encode(output: strings.Builder*, mesh: Mesh*, attributes: bool) -> !:
     if normals >= 0:
         try corners(output, mesh, "vn", normals, 3)
     for face in 0..<mesh.face_count():
-        try output.put("f")
+        try output.put_text("f")
         let first = try mesh.face_offset(face)
         for corner in 0..<(try mesh.face_size(face)):
             let point = (try mesh.face_point(face, corner)) + 1
             let id = first + corner + 1
-            try output.put(try strings.format(scratch, f" {point}"))
+            try output.put_text(try strings.format(scratch, f" {point}"))
             if uv >= 0 or normals >= 0:
-                try output.put("/")
+                try output.put_text("/")
                 if uv >= 0:
-                    try output.put(try strings.format(scratch, f"{id}"))
+                    try output.put_text(try strings.format(scratch, f"{id}"))
                 if normals >= 0:
-                    try output.put(try strings.format(scratch, f"/{id}"))
-        try output.put("\n")
+                    try output.put_text(try strings.format(scratch, f"/{id}"))
+        try output.put_text("\n")
 
 ## The corner-domain attribute `name`, or -1 when the mesh has none. One with
 ## too few components cannot be written as OBJ records.
@@ -47,11 +48,11 @@ func corner_attribute(mesh: Mesh*, name: str, width: i64) -> i64!:
     return attribute
 
 ## One `kind` record per polygon corner, in corner order.
-func corners(output: strings.Builder*, mesh: Mesh*, kind: str, attribute: i64, width: i64) -> !:
+func corners(output: collections.Buffer*, mesh: Mesh*, kind: str, attribute: i64, width: i64) -> !:
     var scratch: u8[64]
     for corner in 0..<mesh.vertex_count():
-        try output.put(kind)
+        try output.put_text(kind)
         for component in 0..<width:
-            try output.put(" ")
-            try output.put(try strings.format_f64(try mesh.attribute_value(attribute, corner, component), scratch))
-        try output.put("\n")
+            try output.put_text(" ")
+            try output.put_text(try strings.format_f64(try mesh.attribute_value(attribute, corner, component), scratch))
+        try output.put_text("\n")
