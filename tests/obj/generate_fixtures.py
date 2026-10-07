@@ -1,25 +1,17 @@
-"""Generated OBJ fixtures, written into the test run's scratch fixtures directory."""
+#!/usr/bin/env python3
+"""Regenerate the checked-in OBJ fixtures beside this file (fixtures/). The large and
+derived fixtures (large, mixed_crlf, chunked, chunked_bad_utf8) are written by main.luc
+itself when the tests run."""
 import math
+from pathlib import Path
 import random
 
 
 def write_fixtures(directory):
-    # Regression for the historical 65,536-corner OBJ buffer overrun.
-    (directory / "large.obj").write_text(
-        "v 0 0 0\nv 1 0 0\nv 0 1 0\nvt 0 0\nvn 0 0 1\n" +
-        "f 1/1/1 2/1/1 3/1/1\n" * 22000)
     rng = random.Random(7)
     (directory / "numbers.obj").write_text(numbers(rng))
     (directory / "polygons.obj").write_text(polygons())
     (directory / "mixed.obj").write_text(mixed(rng))
-    # CRLF line ends, tabs and runs of blanks; the same mesh as mixed.obj.
-    (directory / "mixed_crlf.obj").write_bytes(mixed(random.Random(7)).replace("\n", "\r\n").replace(" ", " \t ").encode())
-    # Several MB: many chunks, each resolving references into earlier ones.
-    text = chunked(rng, 160)
-    (directory / "chunked.obj").write_text(text, encoding="utf-8")
-    # Invalid UTF-8 in the middle of a many-chunk file.
-    middle = len(text) // 2
-    (directory / "chunked_bad_utf8.obj").write_bytes(text[:middle].encode() + b"\n# \xff\n" + text[middle:].encode())
     # Non-ASCII text in comments and names is fine; invalid UTF-8 is not.
     (directory / "accents.obj").write_text("# café ✓\no pièce\nv 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n", encoding="utf-8")
     (directory / "bad_utf8.obj").write_bytes(b"# caf\xe9\nv 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n")
@@ -123,22 +115,5 @@ def mixed(rng):
     return "\n".join(lines) + "\n"
 
 
-def chunked(rng, n):
-    """A grid whose faces follow each row of points, with UVs and normals, so
-    references cross chunk boundaries in both directions of counting."""
-    lines = []
-    for z in range(n):
-        for x in range(n):
-            lines.append("v %r %r %r" % (x / n - 0.5, rng.uniform(-1e-4, 1e-4), z / n - 0.5))
-            # Some spellings take the general parser, on whichever thread.
-            lines.append("vt %.6f %.25g" % (x / n, z / n) if (x + z) % 97 == 0 else "vt %.6f %.6f" % (x / n, z / n))
-        lines.append("vn 0 1 0" if z % 40 else "vn 0 1 0 # übergang")
-        if z > 0:
-            for x in range(n - 1):
-                a = (z - 1) * n + x + 1
-                b = a + n
-                if x % 2:
-                    lines.append("f %d/%d/%d %d/%d/%d %d/%d/%d %d/%d/%d" % (a, a, z, b, b, z + 1, b + 1, b + 1, -1, a + 1, a + 1, z))
-                else:
-                    lines.append("f %d/%d %d/%d %d/%d" % (a - z * n - n - 1, a, b - z * n - n - 1, b, b - z * n - n, b + 1))
-    return "\n".join(lines) + "\n"
+if __name__ == "__main__":
+    write_fixtures(Path(__file__).resolve().parent / "fixtures")

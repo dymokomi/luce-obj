@@ -37,8 +37,7 @@ Malformed indices and unsupported geometry records fail explicitly; a face
 without an area (collinear or coincident corners) is kept, as luce-geocore
 keeps it. Import preserves source coordinates and units.
 
-`./test.sh` runs the Luce regressions in `tests/` native and through the C
-backend: indices, UVs, normals, the 65,536-corner regression, write/read
+`luc test` runs the Luce regressions in `tests/obj/`: indices, UVs, normals, the 65,536-corner regression, write/read
 round trips, and the reader against the reference decoder (number spellings,
 n-gons, CRLF, negative and partial references, many-chunk files, malformed
 text). `python3 bench/run.py` times both on generated 400k- and 700k-face grids. CI builds the compilers and checks out the sibling packages at main.

@@ -1,0 +1,55 @@
+# luce-obj's regressions: decoding, writing round trips and the fast reader against the
+# reference decoder. The random-spelling fixtures (numbers, mixed, polygons) are checked in
+# under fixtures/ (made by generate_fixtures.py); the large and derived ones are written
+# here into a scratch directory, as is what the round trips write.
+from luce_std import files, paths
+from obj_tests import obj_tests
+from reader_tests import reader_tests
+
+pub func main(arguments: list[str]) -> int!:
+    with files.TemporaryDirectory() as directory:
+        let scratch = directory.path()
+        generate(scratch)
+        obj_tests(scratch)
+        reader_tests(scratch)
+    return 0
+
+# The fixtures that are large or derived from a checked-in one.
+func generate(scratch: str) -> unit!:
+    # the historical 65,536-corner OBJ buffer overrun
+    files.write_text(paths.join(scratch, "large.obj"), "v 0 0 0\nv 1 0 0\nv 0 1 0\nvt 0 0\nvn 0 0 1\n" + "f 1/1/1 2/1/1 3/1/1\n".repeat(22000))
+    # CRLF line ends, tabs and runs of blanks: the same mesh as mixed.obj
+    let mixed = files.read_text("fixtures/mixed.obj")
+    files.write_text(paths.join(scratch, "mixed_crlf.obj"), mixed.replace("\n", "\r\n").replace(" ", " \t "))
+    # several MB: many chunks, each resolving references into earlier ones
+    let text = chunked(160)
+    files.write_text(paths.join(scratch, "chunked.obj"), text)
+    # invalid UTF-8 in the middle of a many-chunk file
+    let encoded = text.bytes()
+    let middle = encoded.length // 2
+    files.write(paths.join(scratch, "chunked_bad_utf8.obj"), encoded[0..<middle] + b"\n# \xff\n" + encoded[middle..<encoded.length])
+
+# A grid whose faces follow each row of points, with UVs and normals, so references cross
+# chunk boundaries in both directions of counting.
+func chunked(n: int) -> str:
+    var lines: list[str] = []
+    for z in 0..<n:
+        for x in 0..<n:
+            # a small deterministic jitter in place of a random one
+            let jitter = float((x * 7919 + z * 104729) % 2001 - 1000) * 1e-7
+            lines.append(f"v {float(x) / float(n) - 0.5} {jitter} {float(z) / float(n) - 0.5}")
+            # some spellings take the general parser, on whichever thread
+            if (x + z) % 97 == 0:
+                lines.append(f"vt {float(x) / float(n):.6f} {float(z) / float(n):.25f}")
+            else:
+                lines.append(f"vt {float(x) / float(n):.6f} {float(z) / float(n):.6f}")
+        lines.append("vn 0 1 0" if z % 40 != 0 else "vn 0 1 0 # übergang")
+        if z > 0:
+            for x in 0..<n - 1:
+                let a = (z - 1) * n + x + 1
+                let b = a + n
+                if x % 2 == 1:
+                    lines.append(f"f {a}/{a}/{z} {b}/{b}/{z + 1} {b + 1}/{b + 1}/-1 {a + 1}/{a + 1}/{z}")
+                else:
+                    lines.append(f"f {a - z * n - n - 1}/{a} {b - z * n - n - 1}/{b} {b - z * n - n}/{b + 1}")
+    return lines.join("\n") + "\n"

@@ -1,5 +1,5 @@
 ## The fast reader against the original decoder it replaced (Obj.decode_reference):
-## identical meshes and attributes on generated fixtures, identical errors on
+## identical meshes and attributes on the fixtures beside this file and generated ones, identical errors on
 ## malformed text.
 from luce_obj.obj import Obj
 from luce_geocore.geocore import Mesh
@@ -49,19 +49,19 @@ func fails_alike(text: str) -> unit!:
         print(f"errors differ: fast '{fast}', reference '{slow}'")
     assert(fast != "" and fast == slow)
 
-pub func reader_tests() -> unit!:
-    let numbers = matches("tests/fixtures/numbers.obj")
+pub func reader_tests(scratch: str) -> unit!:
+    let numbers = matches("fixtures/numbers.obj")
     assert(numbers.point_count() == 3003 and numbers.face_count() == 4000)
-    let polygons = matches("tests/fixtures/polygons.obj")
+    let polygons = matches("fixtures/polygons.obj")
     assert(polygons.face_size(polygons.face_count() - 1) == 1000)
-    let mixed = matches("tests/fixtures/mixed.obj")
+    let mixed = matches("fixtures/mixed.obj")
     assert(mixed.find_attribute("uv", 1) >= 0 and mixed.find_attribute("N", 1) >= 0)
     # CRLF line ends and tab/blank runs decode to the very same mesh.
-    identical(matches("tests/fixtures/mixed_crlf.obj"), mixed)
-    let chunked = matches("tests/fixtures/chunked.obj")
+    identical(matches(f"{scratch}/mixed_crlf.obj"), mixed)
+    let chunked = matches(f"{scratch}/chunked.obj")
     assert(chunked.face_count() > 20000)
-    _ = matches("tests/fixtures/large.obj")
-    _ = matches("tests/fixtures/accents.obj")
+    _ = matches(f"{scratch}/large.obj")
+    _ = matches("fixtures/accents.obj")
     # Small cases: weights, explicit plus signs, UVs on some faces only, points only.
     for text in ["v 0 0 0 2\nv 2 0 0 2\nv 0 2 0 4\nf 1 2 3\n",
                  "v 0 0 0\nv 1 0 0\nv 0 1 0\nf +1 +2 +3\n",
@@ -91,11 +91,11 @@ pub func reader_tests() -> unit!:
     identical(Obj.decode(star + face + "\n"), Obj.decode_reference(star + face + "\n"))
     fails_alike(star + "f 1 2\n")
     # An error late in a many-chunk file, after valid chunks.
-    fails_alike(files.read_text("tests/fixtures/chunked.obj", 67108864) + "f 1 2 999999\n")
+    fails_alike(files.read_text(f"{scratch}/chunked.obj", 67108864) + "f 1 2 999999\n")
     # Loading validates UTF-8 as reading text does.
-    for name in ["bad_utf8", "chunked_bad_utf8"]:
+    for path in ["fixtures/bad_utf8.obj", f"{scratch}/chunked_bad_utf8.obj"]:
         var message = ""
-        _ = Obj.load(f"tests/fixtures/{name}.obj") catch failure:
+        _ = Obj.load(path) catch failure:
             message = failure.message
         assert(message == "the file is not valid UTF-8")
     print("PASS OBJ reader matches the reference decoder: meshes, attributes, CRLF, n-gons, chunks and errors")
