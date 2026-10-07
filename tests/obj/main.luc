@@ -2,11 +2,14 @@
 # reference decoder. The random-spelling fixtures (numbers, mixed, polygons) are checked in
 # under fixtures/ (made by generate_fixtures.py); the large and derived ones are written
 # here into a scratch directory, as is what the round trips write.
-from luce_std import files, paths
+from luce_std import files, paths, process
 from obj_tests import obj_tests
 from reader_tests import reader_tests
 
 pub func main(arguments: list[str]) -> int!:
+    # run from this program's own directory, wherever luc test starts it
+    if let here = process.variable("LUC_TEST_DIR"):
+        process.change_directory(here)
     with files.TemporaryDirectory() as directory:
         let scratch = directory.path()
         generate(scratch)
