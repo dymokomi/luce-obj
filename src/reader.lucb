@@ -17,11 +17,10 @@
 ## never has to reproduce error order or wording itself.
 import interop
 import memory
-from luce_std import utf8, files
+from luce_std import utf8, files, parallel
 from luce_geocore.geocore import Mesh, Vector3, invalid
 import numbers
 from lexing import skip_separators, token_end, line_end, delimiter
-from luce_geocore.core import parallel as pool
 import reference
 from scan import scan
 
@@ -105,7 +104,7 @@ pub func decode(data: const u8[], validate: bool) -> interop.Reference[Mesh]!:
     reader.data = data
     reader.validate = validate
     reader.chunks = try split(data)
-    pool.run(reader.chunks.length, count_chunk, (void*)&reader)
+    try parallel.for_each(reader.chunks.length, (void*)&reader, count_chunk)
     var high: u8 = 0
     var failed = false
     var total = Chunk()
@@ -130,7 +129,7 @@ pub func decode(data: const u8[], validate: bool) -> interop.Reference[Mesh]!:
         _ = try scan((str)data)
         return try reference.decode_reference((str)data)
     try allocate(&reader, total)
-    pool.run(reader.chunks.length, parse_chunk, (void*)&reader)
+    try parallel.for_each(reader.chunks.length, (void*)&reader, parse_chunk)
     var used_uv = false
     var used_normal = false
     for chunk in reader.chunks:
@@ -141,14 +140,14 @@ pub func decode(data: const u8[], validate: bool) -> interop.Reference[Mesh]!:
     if total.points == 0:
         error(invalid, "OBJ contains no points")
     if used_uv or used_normal:
-        pool.run(reader.chunks.length, gather_chunk, (void*)&reader)
+        try parallel.for_each(reader.chunks.length, (void*)&reader, gather_chunk)
     let nc = total.corners
     return try Mesh.from_corner_data(reader.points, reader.sizes, reader.corners, reader.corner_uv[..<(nc * 2 if used_uv else 0)], reader.corner_normal[..<(nc * 3 if used_normal else 0)])
 
 ## Chunks of at least `chunk_bytes`, a few per thread, each ending just after
 ## a line feed (the last at the end of the text).
 func split(data: const u8[]) -> Chunk[]!:
-    let wanted = pool.width() * 4 if data.length >= chunk_bytes * 2 else 1
+    let wanted = parallel.workers(most_chunks) * 4 if data.length >= chunk_bytes * 2 else 1
     var count = data.length // chunk_bytes
     if count > wanted:
         count = wanted
@@ -193,8 +192,8 @@ func allocate(reader: Reader*, total: Chunk) -> !:
     reader.corner_uv = try take[f64](with_uv * 2)
     reader.corner_normal = try take[f64](with_normal * 3)
 
-func count_chunk(context: void*?, index: usize):
-    let reader = (Reader*)(context else return)
+func count_chunk(context: void*, index: usize, worker: usize):
+    let reader = (Reader*)context
     let chunk = &reader.chunks[index]
     let bytes = reader.data.data
     let end = chunk.end
@@ -252,8 +251,8 @@ func high_bits(bytes: const u8*, start: usize, end: usize) -> u8:
         at = at +% 1
     return 128 if (any & 128) != 0 or (mixed & 0x8080808080808080) != 0 else 0
 
-func parse_chunk(context: void*?, index: usize):
-    let reader = (Reader*)(context else return)
+func parse_chunk(context: void*, index: usize, worker: usize):
+    let reader = (Reader*)context
     let chunk = &reader.chunks[index]
     parse(reader, chunk) catch failure:
         _ = failure
@@ -384,8 +383,8 @@ func keyword(data: const u8[], kind: Token) -> bool:
     let word = (str)data[kind.start..<kind.end]
     return word == "o" or word == "g" or word == "s" or word == "mtllib" or word == "usemtl"
 
-func gather_chunk(context: void*?, index: usize):
-    let reader = (Reader*)(context else return)
+func gather_chunk(context: void*, index: usize, worker: usize):
+    let reader = (Reader*)context
     let chunk = &reader.chunks[index]
     let first = chunk.first_corner
     let last = first + chunk.corners

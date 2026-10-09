@@ -5,7 +5,7 @@ An original **Luce Base** Wavefront polygon reader and writer. Public export:
 return an immutable luce-geocore `Mesh` with shared positions and polygon corners.
 
 The reader scans the file bytes in place, in chunks split at line boundaries
-and parsed on luce-geocore's thread pool: a counting pass sizes every array,
+and parsed on luce-std's thread pool: a counting pass sizes every array,
 a parsing pass writes points, faces, corners and the `vt`/`vn` tables straight
 into them, and corner UVs and normals are gathered by index. Numbers take
 Clinger's fast path or Eisel-Lemire, bit-identical to `strings.parse_f64`.
